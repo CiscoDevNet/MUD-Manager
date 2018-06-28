@@ -37,14 +37,11 @@ Alternatively it can be downloaded with git, and the follow the instructions in 
         git clone https://github.com/mongodb/mongo.git
 
 ### Mongo C driver
-The mongo-c-driver-1.5.0-rc4 is needed for the MUD manager to communicate with MongoDB.
-
-1.	Download from https://github.com/mongodb/mongo-c-driver/releases. 
-
-    Choose "mongo-c-driver 1.5.4"
+The mongo-c-driver-1.5.0-rc4 is needed for the MUD manager to communicate with MongoDB. Download from https://github.com/mongodb/mongo-c-driver/releases. Choose "mongo-c-driver 1.5.4"
     
-2.	Untar and cd into the mongo-c-driver-1.5.4 directory
-3.	Build it.
+Untar and cd into the mongo-c-driver-1.5.4 directory
+
+Build it.
 
     ./configure
     make
