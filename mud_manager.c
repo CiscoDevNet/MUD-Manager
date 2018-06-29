@@ -21,6 +21,8 @@
 #define DACL_INGRESS_EGRESS 0
 #define DACL_INGRESS_ONLY 1
 #define MAX_BUF 4096
+#define MAX_ACL_STATEMENTS 10
+#define MAX_ACE_STATEMENTS 10
 
 #define INGRESS 0
 #define EGRESS 1 
@@ -1068,7 +1070,7 @@ static cJSON* parse_mud_content (request_context* ctx, int manuf_index)
     cJSON *acllist_json=NULL, *aclitem_json=NULL, *ace_json=NULL;
     cJSON *aceitem_json=NULL, *action_json=NULL, *matches_json=NULL;
     cJSON *port_json=NULL, *response_json=NULL;
-    cJSON *tmp_json=NULL, *ctrl_json=NULL;
+    cJSON *tmp_json=NULL, *tmp_2_json=NULL, *ctrl_json=NULL;
     int index=0, ace_index=0, acl_index=0, acl_count=0, is_v6=0, is_vlan=0;
     ACL *acllist=NULL;
     char *type=NULL;
@@ -1127,7 +1129,7 @@ static cJSON* parse_mud_content (request_context* ctx, int manuf_index)
      * in the "acllist" structure, and returning a count of how many total
      * ACLs we have.
      */
-    acllist = (ACL*) calloc(10, sizeof(ACL));
+    acllist = (ACL*) calloc(MAX_ACL_STATEMENTS, sizeof(ACL));
     acl_count = parse_device_policy(mud_json, "from-device-policy", acllist, 
 		    					    0, INGRESS);
     if (acl_count == -1) {
@@ -1143,11 +1145,11 @@ static cJSON* parse_mud_content (request_context* ctx, int manuf_index)
     }
 
     /*
-     * Find the "ietf-access-control-list:access-lists" section in the 
+     * Find the "ietf-access-control-list:acls" section in the 
      * MUD file.
      */
     if ((lists_json=cJSON_GetObjectItem(full_json, 
-		"ietf-access-control-list:access-lists")) == NULL) {  
+		"ietf-access-control-list:acls")) == NULL) {  
         MUDC_LOG_ERR("JSON file is missing 'ietf-acl:access-lists'");
         goto err;
     }
@@ -1158,8 +1160,7 @@ static cJSON* parse_mud_content (request_context* ctx, int manuf_index)
     }
 
     /*
-     * Loop through each of the ACLs by name. We've stored the ACL
-     * names in "acllist".
+     * Loop through each of the ACLs in "acllist".
      */
     for (index=0;index < cJSON_GetArraySize(acllist_json); index++) {
         aclitem_json = cJSON_GetArrayItem(acllist_json, index);
@@ -1167,16 +1168,20 @@ static cJSON* parse_mud_content (request_context* ctx, int manuf_index)
             MUDC_LOG_ERR("'MUD file inconsistent: no ACL");
             goto err;
         }
+	/*
+	 * Find the name in acllist, and return its index. acllist holds
+	 * the ACL names disovered in the earlier from-device-policy and
+	 * to-device-policy sections of the file.
+	 */
         acl_index = find_index(acllist, acl_count, 
 		    	   GETSTR_JSONOBJ(aclitem_json, "name"));
         if (acl_index == -1) {
-            MUDC_LOG_ERR("MUD file inconsistent: not enough ACLs");
+            MUDC_LOG_ERR("MUD file inconsistent: ACL name %s not found",
+		    GETSTR_JSONOBJ(aclitem_json, "name"));
             goto err;
         }
 
         /*
-	 * There may be a name, but we ignore it. (not mandatory)
-	 *
 	 * Find and store the ACL "type", and find the first "ace".
 	 * Note: Beginning with "aces", the Yang model definition
 	 *       is described in draft-ietf-netmod-acl-model-19.
@@ -1196,16 +1201,19 @@ static cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 
         ace_json = cJSON_GetObjectItem(cJSON_GetObjectItem(aclitem_json, 
 							   "aces"), "ace");
-        acllist[acl_index].ace = (ACE*)calloc(10, sizeof(ACE));
         if (!ace_json) {
 	    MUDC_LOG_ERR("ACE statements are missing");
 	    goto err;
         }
+        acllist[acl_index].ace = (ACE*)calloc(MAX_ACE_STATEMENTS, sizeof(ACE));
         acllist[acl_index].ace_count = 0;
 	/*
 	 * Loop through "ace" statements in this ACL.
-	 *   
 	 */
+	if (cJSON_GetArraySize(ace_json) > MAX_ACE_STATEMENTS) {
+	    MUDC_LOG_ERR("Too many ACE statements: %d", cJSON_GetArraySize(ace_json));
+	    goto err;
+	}
         for (ace_index = 0; ace_index < cJSON_GetArraySize(ace_json); 
 		ace_index++) {
 
@@ -1251,16 +1259,20 @@ static cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		/* Look for "protocol" (required) */
                 acllist[acl_index].ace[ace_index].matches.protocol = 
 		    GETINT_JSONOBJ(tmp_json, "protocol");
+		if (acllist[acl_index].ace[ace_index].matches.protocol == 0) {
+		    MUDC_LOG_ERR("Protocol not found in ACE.\n");
+		    goto err;
+		} 
 
 		/* Check for MUD DNS name extensions */
-                if ((tmp_json=cJSON_GetObjectItem(tmp_json, 
+                if ((tmp_2_json=cJSON_GetObjectItem(tmp_json, 
 			    "ietf-acldns:src-dnsname"))) {
                     acllist[acl_index].ace[ace_index].matches.dnsname = 
-			convert_dns_to_ip(tmp_json->valuestring, is_v6);
-                } else if ((tmp_json=cJSON_GetObjectItem(tmp_json, 
+			convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
+                } else if ((tmp_2_json=cJSON_GetObjectItem(tmp_json, 
 			    "ietf-acldns:dst-dnsname"))) {
                     acllist[acl_index].ace[ace_index].matches.dnsname = 
-			convert_dns_to_ip(tmp_json->valuestring, is_v6);
+			convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
                 } else {
                     acllist[acl_index].ace[ace_index].matches.dnsname = "any";
                 }

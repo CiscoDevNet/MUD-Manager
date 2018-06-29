@@ -3,32 +3,25 @@
 	"ACL_Prefix" : "ACS:",
 	"ACL_Type" : "dACL-ingress-only",
 	"COA_Password" : "mudtester",
-        "Enterprise_CACert" : "/home/mudtester/enterprise_ca/cacert.crt",
-        "MUDManager_cert" : "/home/mudtester/mud_controller/mudmanagercertandkey.pem",
-        "MUDManager_key" : "/home/mudtester/mud_controller/mudmanagercertandkey.pem",
 	"Manufacturers" : [ 
 		{ "authority" : "luminaire.example.com",
-                  "cert": "/home/mudtester/manufacturer_ca/manufacturer-cacert.pem",
-		  "my_controller_v4" : "50.1.1.4",
-		  "local_networks_v4" : "255.255.255.255",
-		  "vlan" :  10  }
+                  "cert": "/home/mudtester/luminaire-cacert.pem",
+		  "my_controller_v4" : "10.1.1.4",
+		  "local_networks_v4" : "255.255.255.255"
+	 	}
 	 ],
 	"DNSMapping" : {
-		"www.google.com" : "172.12.212.10",
-		"google.com" : "172.12.212.10"
+		"fw-update.luminaire.example.com" : "172.12.212.10"
 	},
 	"ControllerMapping" : {
-		"http://lightcontroller.com" : "50.1.1.4",
-		"http://google.com" : "10.10.10.1"
+		"http://lightcontroller.example.com" : "10.1.1.5"
 	},
 	"DefaultACL" : ["deny ip any any", "deny icmp any any"],
 	"DNSMapping_v6" : {
-		"www.google.com" : "1111:2222:2223:2223:::",
-		"google.com" : "1111:2222:3333:2223:::",
-		"www.bing.com" : "1111:2222:4533:2223:::"
+		"fw-update.luminaire.example.com" : "1111:2222:4533:2223:::"
 	},
 	"ControllerMapping_v6" : {
-		"http://lightcontroller.com" : "ffff:2343:4444:::"
+		"http://lightcontroller.example.com" : "ffff:2343:4444:::"
 	},
 	"DefaultACL_v6" : ["deny ipv6 any any", "deny ipv6 1111:1222:1111::: any"]
 }
