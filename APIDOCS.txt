@@ -1,0 +1,25 @@
+Here is API provided by MUD Conttroller:
+
+All request response are in JSON format.
+
+1. /getaclname:
+   parameters:  MUD_URI contains the URI for the MUD File. (optional)
+	        MAC_ADDR contains MAC address of IoT device. (optional)
+		NAS contains address of access swith (optional)
+		SESS_ID contains session ID from AAA server (optional)
+
+   This API must be called with either MUD_URI or MAC_ADDR, but can include both.
+	
+   Response: List of dacl names in Cisco AV pair format. It also includes the VLAN config, if MUD file
+          has configured with inter device communication from same manufactuer.   
+  
+2. /getaclpolicy:
+    Parameters: ACL_NAME containts the DACL Name
+
+    Response:  List of ACE for the DACL name requested in Cisco AV pair format
+
+
+3. /getmasauri:
+    Paramters:  MUD_URI contains URI for the MUD File
+
+    Response:  MASA_URI for the corresponding device.
