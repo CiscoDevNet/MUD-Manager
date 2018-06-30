@@ -1295,14 +1295,14 @@ static cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		    GETINT_JSONOBJ(tmp_json, "protocol");
 
 		/* Check for MUD DNS name extensions */
-                if ((tmp_json=cJSON_GetObjectItem(tmp_json, 
+                if ((tmp_2_json=cJSON_GetObjectItem(tmp_json, 
 			    "ietf-acldns:src-dnsname"))) {
                     acllist[acl_index].ace[ace_index].matches.dnsname = 
-			convert_dns_to_ip(tmp_json->valuestring, is_v6);
-                } else if ((tmp_json=cJSON_GetObjectItem(tmp_json, 
+			convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
+                } else if ((tmp_2_json=cJSON_GetObjectItem(tmp_json, 
 			    "ietf-acldns:dst-dnsname"))) {
                     acllist[acl_index].ace[ace_index].matches.dnsname = 
-			convert_dns_to_ip(tmp_json->valuestring, is_v6);
+			convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
                 } else {
                     acllist[acl_index].ace[ace_index].matches.dnsname = "any";
                 }
