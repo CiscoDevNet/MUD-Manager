@@ -9,4 +9,4 @@
                 __func__, __LINE__, ##args); \
 } while (0)
 
-void mudc_log (char *format, ...);
+extern void mudc_log (char *format, ...);
