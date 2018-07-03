@@ -1,0 +1,3 @@
+#!/bin/bash
+
+mongo mud_manager --eval "db.dropDatabase()"

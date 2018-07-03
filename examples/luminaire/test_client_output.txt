@@ -1,0 +1,34 @@
+URL:  https://luminaire.example.com/Luminaire_150
+Connect_opts: (null) (null) (null)
+
+Starting RESTful client against http://127.0.0.1:8000/getaclname
+Got reply:
+Response: <200>: {
+        "Cisco-AVPair": ["ACS:CiscoSecure-Defined-ACL=mud-21966-v4fr.in"]
+}
+Got ACL Names
+Response Json <{
+        "Cisco-AVPair": ["ACS:CiscoSecure-Defined-ACL=mud-21966-v4fr.in"]
+}>
+ACL Name 0: ACS:CiscoSecure-Defined-ACL=mud-21966-v4fr.in
+Connect_opts: (null) (null) (null)
+Send request: http://127.0.0.1:8000/getaclpolicy {
+        "ACL_NAME":     "mud-21966-v4fr.in"
+}
+Server closed connection
+Got reply:
+Response: <200>: {
+        "User-Name":    "mud-21966-v4fr.in",
+        "Cisco-AVPair": ["ip:inacl#10=permit tcp any host 172.12.212.10 range 443 443 established",
+"ip:inacl#20=permit udp any host 10.1.1.4 range 5684 5684", "ip:inacl#30=permit udp any host
+255.255.255.255 range 5683 5683", "ip:inacl#40=deny ip any any"]
+}
+
+
+Got ACE <{
+        "User-Name":    "mud-21966-v4fr.in",
+        "Cisco-AVPair": ["ip:inacl#10=permit tcp any host 172.12.212.10 range 443 443 established",
+"ip:inacl#20=permit udp any host 10.1.1.4 range 5684 5684", "ip:inacl#30=permit udp any host
+255.255.255.255 range 5683 5683", "ip:inacl#40=deny ip any any"]
+}>
+Server closed connection

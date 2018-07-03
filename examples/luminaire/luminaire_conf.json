@@ -1,0 +1,27 @@
+{
+	"MUDManagerAPIProtocol" : "http",
+	"ACL_Prefix" : "ACS:",
+	"ACL_Type" : "dACL-ingress-only",
+	"COA_Password" : "mudtester",
+	"Manufacturers" : [ 
+		{ "authority" : "luminaire.example.com",
+                  "cert": "/home/mudtester/luminaire-cacert.pem",
+		  "my_controller_v4" : "10.1.1.4",
+		  "local_networks_v4" : "255.255.255.255"
+	 	}
+	 ],
+	"DNSMapping" : {
+		"fw-update.luminaire.example.com" : "172.12.212.10"
+	},
+	"ControllerMapping" : {
+		"http://lightcontroller.example.com" : "10.1.1.5"
+	},
+	"DefaultACL" : ["deny ip any any"],
+	"DNSMapping_v6" : {
+		"fw-update.luminaire.example.com" : "1111:2222:4533:2223:::"
+	},
+	"ControllerMapping_v6" : {
+		"http://lightcontroller.example.com" : "ffff:2343:4444:::"
+	},
+	"DefaultACL_v6" : ["deny ipv6 any any"]
+}

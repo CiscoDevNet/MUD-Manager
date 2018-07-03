@@ -1,0 +1,38 @@
+#!/bin/bash
+
+#
+# Dump the MUD Manager collectiions.
+#
+# -v Verbose. Dumps the entire MUD file collection rather than
+#             just the MUD URL.
+#
+
+USAGE="usage: $0: [-v]"
+ALL=0
+
+while getopts a c; do
+    case "$c" in
+    v)ALL=1; shift;;
+    *)echo $USAGE; exit;;
+    esac
+done
+
+echo "MUD FILE COLLECTION"
+
+if [ ${ALL} == 1 ]; then
+	mongo mud_manager --eval "db.mudfile.find().forEach(printjson)" 
+else
+	mongo mud_manager --eval "db.mudfile.find().forEach(printjson)" | grep URI
+fi
+
+echo
+echo "MUD POLICIES COLLECTION"
+echo
+
+mongo mud_manager --eval "db.mud_policies.find().forEach(printjson)" 
+
+echo
+echo "MUD MACADDR COLLECTION"
+echo
+
+mongo mud_manager --eval "db.macaddr.find().forEach(printjson)" 
