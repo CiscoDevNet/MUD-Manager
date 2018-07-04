@@ -1,18 +1,26 @@
 /*
  * Copyright (c) 2017-2018 by Cisco Systems, Inc.
  * All rights reserved.
+ *
+ * This file contains logging functions and controls.
  */
 
 #include <stdarg.h>
 #include <stdio.h>
 #include "log.h"
 
-void mudc_log (char *format, ...) 
+/* Default logging level is INFO */
+int log_level = LOG_LEVEL_INFO;
+
+void mudc_log (int level, char *format, ...) 
 {
     va_list arguments;
 
-    va_start(arguments, format);
+    if (level <= log_level) {
 
-    vfprintf(stdout, format, arguments);
-    fflush(stdout);
+    	va_start(arguments, format);
+
+    	vfprintf(stdout, format, arguments);
+    	fflush(stdout);
+    }
 }

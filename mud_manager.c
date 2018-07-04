@@ -2647,13 +2647,23 @@ int main(int argc, char *argv[])
     OpenSSL_add_all_algorithms();
     ERR_load_crypto_strings();
 
-    while ((opt = getopt(argc, argv, "f:")) != -1) {
+    while ((opt = getopt(argc, argv, "f:l:")) != -1) {
 	switch (opt) {
 	case 'f':
 	    config_filename = optarg;
 	    break;
+	case 'l':
+	    log_level = atoi(optarg);
+	    if (log_level > LOG_LEVEL_ALL) {
+		fprintf(stderr, "Invalid log level. Must be <= %d\n", 
+				LOG_LEVEL_ALL);
+		return 1;
+	    }
+	    break;
 	default:
-	    fprintf(stderr, "Usage: %s [ -f config_filename ]\n", argv[0]);
+	    fprintf(stderr, 
+		    "Usage: %s [ -f config_filename ] -l [log_level]\n", 
+		    argv[0]);
 	    return 1;
 	}
     }
@@ -2662,6 +2672,7 @@ int main(int argc, char *argv[])
 	config_filename = default_config_filename;
     }
     MUDC_LOG_INFO("Using configuration file: %s\n", config_filename);
+    /* BEW */ MUDC_LOG_ERR("BEW: Ooops, go an error!\n");
     if (read_mudmgr_config(config_filename) == -1) {
         MUDC_LOG_ERR("Error reading config file\n");
         return 1;
