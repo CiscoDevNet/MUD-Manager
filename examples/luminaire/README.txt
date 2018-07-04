@@ -39,6 +39,6 @@ If the MUD file server is running on the same host as the MUD Manager, add the f
 
 (6) Run the following command
 
-	./test_client -f Luminaire_150 -c 127.0.0.1:8000 -w luminaire.example.com
+	mud_test_client -f Luminaire_150 -c 127.0.0.1:8000 -w luminaire.example.com
 
 The output should look similar to the test_client_output.txt in this directory.
