@@ -1,6 +1,10 @@
 /*
  * Copyright (c) 2017-2018 by Cisco Systems, Inc.
  * All rights reserved.
+ *
+ * The sessions structure keeps track of MAC addresses and 
+ * dynamic information that has been disovered about those MAC addresses
+ * since the program was started.
  */
 
 #include <string.h>
