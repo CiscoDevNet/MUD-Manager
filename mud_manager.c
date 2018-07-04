@@ -2672,7 +2672,6 @@ int main(int argc, char *argv[])
 	config_filename = default_config_filename;
     }
     MUDC_LOG_INFO("Using configuration file: %s\n", config_filename);
-    /* BEW */ MUDC_LOG_ERR("BEW: Ooops, go an error!\n");
     if (read_mudmgr_config(config_filename) == -1) {
         MUDC_LOG_ERR("Error reading config file\n");
         return 1;
