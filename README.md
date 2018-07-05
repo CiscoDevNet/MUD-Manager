@@ -129,5 +129,18 @@ If a MUD file has a "controller" statement,it needs to be translated to an IP ad
 
 A site policy may provide additional restrictions to the devices. These can be defined as access control list statements here. The default policy included in the configuration policy is to block all othe IP and ICMP packets.
 
+## MongoDB Tools
 
+Two scripts are included to manipulate the MUD Manger collections in MongoDB.
+  * mud_clobber_db. This can be used to clean out the MUD Manger collections, which forces MUD files to be fetched and access policy to be re-gererated.
+  * mud_show_db. This displays the contents of the three collections used by the MUD Manager.
+
+## Examples
+
+The examples directory includes an example of a "luminaire", which includes a sample MUD file, sample MUD file server, certificates, and instructions how to use the mud_test_command to invoke the MUD Manager. 
+
+## Contributers
+Rashmikant Shah
+[Brian Weis](https://github.com/iggy2028)
+[Cheryl Madson](https://github.com/cmadsoncisco)
 
