@@ -141,6 +141,8 @@ The examples directory includes an example of a "luminaire", which includes a sa
 
 ## Contributers
 Rashmikant Shah
+
 [Brian Weis](https://github.com/iggy2028)
+
 [Cheryl Madson](https://github.com/cmadsoncisco)
 
