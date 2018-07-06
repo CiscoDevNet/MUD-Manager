@@ -16,8 +16,10 @@
 #include <mongoc.h>
 #pragma GCC diagnostic pop
 #include <cJSON.h>
+#include "acl.h"
 #include "log.h"
 #include "sessions.h"
+#include "acl_types.h"
 
 #define DACL_INGRESS_EGRESS 0
 #define DACL_INGRESS_ONLY 1
@@ -25,8 +27,6 @@
 #define MAX_ACL_STATEMENTS 10
 #define MAX_ACE_STATEMENTS 10
 
-#define INGRESS 0
-#define EGRESS 1 
 #define FROM_DEVICE 0
 #define TO_DEVICE 1
 
@@ -51,37 +51,12 @@ const char *mudmgr_key=NULL;
 const char *mudmgr_server=NULL;
 const char *mudmgr_coa_pw=NULL;
 const char *acl_list_prefix = NULL;
-int acl_list_type = DACL_INGRESS_EGRESS;
+int acl_list_type = INGRESS_EGRESS_ACLS;
+enum acl_response_type acl_response = CISCO_DACL;
 mongoc_client_t *client=NULL;
 mongoc_collection_t *policies_collection=NULL;
 mongoc_collection_t *mudfile_collection=NULL;
 mongoc_collection_t *macaddr_collection=NULL;
-
-struct _match {
-    char* dnsname;
-    int protocol;
-    int is_ipv6;
-    int src_lower_port;
-    int src_upper_port;
-    int dst_lower_port;
-    int dst_upper_port;
-    int dir_initiated;
-};
-
-typedef struct _ace {
-    char* rule_name;
-    struct _match matches;
-    int action;
-    int num_ace;
-} ACE;
-
-typedef struct _acl_struct {
-    char* acl_name;
-    char* acl_type;
-    int  pak_direction;
-    ACE *ace;
-    int ace_count;
-} ACL;
 
 typedef struct _request_context {
     struct mg_connection *in;
@@ -146,7 +121,8 @@ static void send_error_result(struct mg_connection *nc, int status, const char *
     nc->flags |= MG_F_SEND_AND_CLOSE;
 }
 
-static void send_error_for_context(request_context *ctx, int status, const char *msg)
+static void send_error_for_context(request_context *ctx, int status, 
+				   const char *msg)
 {
     if (ctx == NULL || msg == NULL) {
         MUDC_LOG_ERR("invalid parameters");
@@ -261,7 +237,7 @@ static int read_mudmgr_config (char* filename)
     acl_list_prefix = GETSTR_JSONOBJ(json, "ACL_Prefix");
     acl_list_type_str = GETSTR_JSONOBJ(json, "ACL_Type");
     if ((acl_list_type_str != NULL) && !strcmp(acl_list_type_str, "dACL-ingress-only")) {
-        acl_list_type = DACL_INGRESS_ONLY;
+        acl_list_type = INGRESS_ONLY_ACL;
     }
 
     //MUDC_LOG_INFO("MUDCTRL CA Cert <%s> MUDCTRL Cert <%s> MUDCTRL Key <%s>", mudmgr_CAcert, mudmgr_cert, mudmgr_key);
@@ -577,7 +553,6 @@ static cJSON *get_mudfile_uri(char *uri)
     while (mongoc_cursor_next(cursor, &record)) {
         found_str = bson_as_json(record, NULL);
         if (found_str!=NULL) {
-            MUDC_LOG_INFO("found the record <%s>\n", found_str);
             found_json = cJSON_Parse(found_str);
             bson_free(found_str);
             if (!found_json) {
@@ -673,158 +648,6 @@ static int find_index(ACL *acllist, int acl_count, char* acl_name)
         }
     }
     return ret;
-}
-
-static cJSON* create_response_json(ACL *acllist, int acl_count) 
-{
-    cJSON *response_acl=NULL, *parsed_json=NULL, *acefmt=NULL;
-    char *ace_ptr=NULL, *acl_prefix=NULL;
-    char policy_name[80], ace_str[1024];
-    int ace_index=0, index=0, i=0;
-    char *txt=NULL;
-    char *dnsname=NULL;
-
-    if (acllist == NULL || acl_count <= 0) {
-        MUDC_LOG_ERR("Invalid parameters");
-        return NULL;
-    }
-
-    parsed_json = cJSON_CreateArray();
-    ace_ptr = ace_str;
-
-    for (index=0; index < acl_count; index++) {
-        MUDC_LOG_INFO("ACL List type <%d>", acl_list_type);
-        if ((acllist[index].pak_direction == EGRESS) && (acl_list_type == DACL_INGRESS_ONLY)) {
-            continue;
-        }
-
-        response_acl = cJSON_CreateObject();
-        if (response_acl == NULL) {
-            MUDC_LOG_ERR("Error allocating resposne_acl");
-            cJSON_Delete(parsed_json);
-            return NULL;
-        }
-
-        MUDC_LOG_INFO("ACLName <%s> %d", acllist[index].acl_name, acllist[index].pak_direction);
-        if (acl_list_prefix != NULL) {
-            sprintf(policy_name, "%s", acl_list_prefix);
-        }
-        if (acllist[index].pak_direction == INGRESS) {
-            sprintf(policy_name, "%sCiscoSecure-Defined-ACL=%s.in", policy_name, acllist[index].acl_name);
-            acl_prefix="inacl";
-        } else if (acllist[index].pak_direction == EGRESS) {
-            sprintf(policy_name, "%sCiscoSecure-Defined-ACL=%s.out", policy_name, acllist[index].acl_name);
-            acl_prefix="outacl";
-        }
-
-        cJSON_AddItemToObject(response_acl, "DACL_Name",cJSON_CreateString(policy_name));
-        cJSON_AddItemToObject(response_acl, "DACL", acefmt = cJSON_CreateArray());
-
-        MUDC_LOG_INFO("Ace Count <%d>", acllist[index].ace_count);
-        for (ace_index=0; ace_index < acllist[index].ace_count; ace_index++) {
-            if (strcmp(acllist[index].acl_type, "ipv4") == 0) {
-                ace_ptr+= sprintf(ace_ptr, "ip:");
-            } else if (strcmp(acllist[index].acl_type, "ipv6") == 0) {
-                ace_ptr+= sprintf(ace_ptr, "ipv6:");
-            }
-
-            if (acllist[index].ace[ace_index].action == 1) {
-		if (acllist[index].ace[ace_index].num_ace == 2) {
-                	ace_ptr+= sprintf(ace_ptr, "%s#%d=permit", acl_prefix, (ace_index+1)*10-1);
-		} else {
-                	ace_ptr+= sprintf(ace_ptr, "%s#%d=permit", acl_prefix, (ace_index+1)*10);
-		}
-            }
-            if (acllist[index].ace[ace_index].matches.protocol == 6) {
-                ace_ptr+= sprintf(ace_ptr, " tcp");
-            } else if (acllist[index].ace[ace_index].matches.protocol == 17) {
-                ace_ptr+= sprintf(ace_ptr, " udp");
-            }
-
-            if (acllist[index].pak_direction == INGRESS) {
-                ace_ptr += sprintf(ace_ptr, " any");
-                if ((acllist[index].ace[ace_index].matches.src_lower_port != 0)
-                        && (acllist[index].ace[ace_index].matches.src_upper_port != 0 )) {
-                    ace_ptr += sprintf(ace_ptr, " range %d %d", acllist[index].ace[ace_index].matches.src_lower_port,
-                        acllist[index].ace[ace_index].matches.src_upper_port);
-                }
-            }
-
-            dnsname = acllist[index].ace[ace_index].matches.dnsname;
-            if (dnsname && (strcmp(dnsname, "any") == 0)) {
-                ace_ptr += sprintf(ace_ptr, " any");
-            } else {
-                ace_ptr += sprintf(ace_ptr, " host %s", dnsname);
-            }
-
-            if (acllist[index].pak_direction == INGRESS) {
-                if ((acllist[index].ace[ace_index].matches.dst_lower_port != 0)
-                        && (acllist[index].ace[ace_index].matches.dst_upper_port != 0 )) {
-                    ace_ptr += sprintf(ace_ptr, " range %d %d", acllist[index].ace[ace_index].matches.dst_lower_port,
-                        acllist[index].ace[ace_index].matches.dst_upper_port);
-                }
-            } else if (acllist[index].pak_direction == EGRESS) {
-                if ((acllist[index].ace[ace_index].matches.src_lower_port != 0)
-                        && (acllist[index].ace[ace_index].matches.src_upper_port != 0 )) {
-                    ace_ptr += sprintf(ace_ptr, " range %d %d", acllist[index].ace[ace_index].matches.src_lower_port,
-                        acllist[index].ace[ace_index].matches.src_upper_port);
-                }
-                ace_ptr += sprintf(ace_ptr, " any");
-                if ((acllist[index].ace[ace_index].matches.dst_lower_port != 0)
-                        && (acllist[index].ace[ace_index].matches.dst_upper_port != 0 )) {
-                    ace_ptr += sprintf(ace_ptr, " range %d %d", acllist[index].ace[ace_index].matches.dst_lower_port, 
-                        acllist[index].ace[ace_index].matches.dst_upper_port);
-                }
-            }
-
-            if ((acllist[index].ace[ace_index].matches.protocol == 6) && 
-                    (acllist[index].ace[ace_index].matches.dir_initiated != -1)) {
-                if (acllist[index].ace[ace_index].num_ace == 2) {
-                    ace_ptr += sprintf(ace_ptr, " syn");
-		    acllist[index].ace[ace_index].num_ace--;
-                    ace_index--;
-                } else {
-                    ace_ptr += sprintf(ace_ptr, " established");
-                }
-            }
-            MUDC_LOG_INFO("ACE Ptr: %s", ace_str);
-            cJSON_AddItemToArray(acefmt, cJSON_CreateString(ace_str));
-            ace_ptr = ace_str;
-        }
-        if (defacl_json == NULL) {
-            MUDC_LOG_INFO("In NULL if");
-            if (strcmp(acllist[index].acl_type, "ipv4") == 0) {
-                ace_ptr += sprintf(ace_ptr, "ip:%s#%d=deny ip any any", acl_prefix, (ace_index+1)*10);
-            } else if (strcmp(acllist[index].acl_type, "ipv6") == 0) {
-                ace_ptr += sprintf(ace_ptr, "ip:%s#%d=deny ipv6 any any", acl_prefix, (ace_index+1)*10);
-            }
-            cJSON_AddItemToArray(acefmt, cJSON_CreateString(ace_str));
-            ace_ptr = ace_str;
-            cJSON_AddItemToArray(parsed_json, cJSON_Duplicate(response_acl, true));
-        } else {
-            if (strcmp(acllist[index].acl_type, "ipv4") == 0) {
-                for(i=0; i < cJSON_GetArraySize(defacl_json); i++) {
-                    ace_ptr += sprintf(ace_ptr, "ip:%s#%d=%s", acl_prefix, (ace_index+1)*10+i, GETSTR_JSONARRAY(defacl_json, i));
-                    cJSON_AddItemToArray(acefmt, cJSON_CreateString(ace_str));
-                    ace_ptr = ace_str;
-                }
-            } else if (strcmp(acllist[index].acl_type, "ipv6") == 0) {
-                for(i=0; i < cJSON_GetArraySize(defacl_v6_json); i++) {
-                    ace_ptr += sprintf(ace_ptr, "ipv6:%s#%d=%s", acl_prefix, (ace_index+1)*10+i, GETSTR_JSONARRAY(defacl_v6_json, i));
-                    cJSON_AddItemToArray(acefmt, cJSON_CreateString(ace_str));
-                    ace_ptr = ace_str;
-                }
-            }
-            cJSON_AddItemToArray(parsed_json, cJSON_Duplicate(response_acl, true));
-        }
-        cJSON_Delete(response_acl);
-    }
-    txt = cJSON_Print(parsed_json);
-    if (txt != NULL) {
-        MUDC_LOG_INFO("Returning parsed_json %s", txt);
-        free(txt);
-    }
-    return(parsed_json);
 }
 
 static int parse_device_policy(cJSON *m_json, char* policy, ACL *acllist, int start_cnt, int direction)
@@ -1348,7 +1171,8 @@ static cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	}
     }
     MUDC_LOG_INFO("Calling Create response\n");
-    response_json = create_response_json(acllist, acl_count);
+    response_json = create_policy_from_acllist(CISCO_DACL, acllist, acl_count,
+	    				       acl_list_type);
    
     /*
      * Now that we've fully verified that the MUD file is properly formed 
@@ -1443,6 +1267,10 @@ static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, boo
 
     response_json = cJSON_CreateObject();
 
+    /*
+     * Find all of the policy records that contain this MUD URL, and place each
+     * found "DACL_Name" in a JSON array.
+     */
     filter = BCON_NEW("URI", BCON_UTF8(uri));
     cursor = mongoc_collection_find_with_opts(policies_collection, filter,
 	    				      NULL, NULL);
@@ -1456,21 +1284,6 @@ static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, boo
                 MUDC_LOG_ERR("Error Before: [%s]\n", cJSON_GetErrorPtr());
             } else {
                 found_uri = true;
-#if 0
-                tmp_json = cJSON_GetObjectItem(found_json, "Expiry-Time");
-                if (tmp_json) {
-                     dt = cJSON_GetObjectItem(tmp_json, "$date");
-                     if (dt) {
-                         expired_time = (time_t *)&(dt->valueint);
-                         MUDC_LOG_INFO("expiry time: %s", ctime(expired_time));
-                         time(&curr_time);
-                         if (difftime(curr_time, *expired_time) >= 0) {
-                             MUDC_LOG_INFO("Cache has expired");
-                             *cache_expired = true;
-                         }
-                     }
-                }
-#endif
                 name_json = cJSON_GetObjectItem(found_json, "DACL_Name");
                 if (name_json != NULL) {
                     cJSON_AddItemToArray(dacl_name, 
@@ -1487,6 +1300,12 @@ static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, boo
         if (query_only) {
             goto end;
         }
+	/*
+	 * This precedes the JSON array of ACL names with a type of
+	 * "Cisco-AVPair". When FreeRADIUS receives this array, it 
+	 * generates a set of Cisco-AVPair RADIUS attributes, each one having
+	 * a single ACL name.
+	 */
         cJSON_AddItemToObject(response_json, "Cisco-AVPair", dacl_name);
         dacl_name = NULL;  // we don't want to nuke this
         if (vlan) {
@@ -1496,6 +1315,7 @@ static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, boo
             cJSON_AddNumberToObject(response_json, "Tunnel-Private-Group-Id", 
 		    				   vlan);
         }
+
         ret = 200;
         reply_type = "Content-Type: application/aclname";
         response_str = cJSON_Print(response_json);
@@ -1559,14 +1379,15 @@ static void start_session (struct mg_connection *nc,
         return;
     }
 
-    /*
-     * If other events need to be triggered on a new session,
-     * add those triggers here.
-     */
     if (nc == NULL) {
         MUDC_LOG_ERR("Invalid parameters");
         return;
     }
+
+    /*
+     * If other events need to be triggered on a new session,
+     * add those triggers here.
+     */
 
     return;
 }
@@ -1827,10 +1648,13 @@ static void send_response(struct mg_connection *nc, cJSON *parsed_json)
         return;
     }
 
-    cJSON_AddItemToObject(response_json, "Cisco-AVPair", dacl_name = cJSON_CreateArray());
+    cJSON_AddItemToObject(response_json, "Cisco-AVPair", 
+	    		  dacl_name = cJSON_CreateArray());
     for (index=0;index < cJSON_GetArraySize(parsed_json); index++) {
         acl_json = cJSON_GetArrayItem(parsed_json, index);
-        cJSON_AddItemToArray(dacl_name, cJSON_Duplicate(cJSON_GetObjectItem(acl_json, "DACL_Name"), true));
+        cJSON_AddItemToArray(dacl_name, 
+		cJSON_Duplicate(cJSON_GetObjectItem(acl_json, "DACL_Name"), 
+		true));
         vlan = GETINT_JSONOBJ(acl_json, "VLAN");
     }
     if (vlan) {
@@ -1905,11 +1729,51 @@ static void free_request_context (request_context *ctx)
     free(ctx);
 }
 
+void attempt_coa(sessions_info *sess)
+{
+    char coa_command[1024];
+
+    MUDC_LOG_INFO("Checking if COA is required\n");
+    if (sess->mac_addr != NULL && strcmp(sess->mac_addr, "NA")) {
+        MUDC_LOG_INFO("COA could be performed for MAC Address <%s>\n", 
+		      sess->mac_addr);
+        if (sess->sessid == NULL) {
+            MUDC_LOG_INFO("... but cannot do CoA: Session ID is NULL\n");
+	} else if (sess->nas == NULL) {
+	    MUDC_LOG_INFO("... but cannot do CoA: NAS is NULL\n");
+	} else if (mudmgr_coa_pw == NULL) {
+   	    MUDC_LOG_INFO("... but cannot do CoA: CoA password is not found\n");
+	} else {
+	    /* 
+	     * system(3) blocks, which can cause problems if it takes
+	     * too long. Other messages for the this session 
+	     * (such as the an Access-Request) may block and we 
+	     * falsely return an Acesss-Reject because the rest 
+	     * module times out. So we avoid this by fork(2)ing off a 
+	     * child proecess to do the CoA asynchronously.
+	     *
+	     * WARNING: Don't put any code here that updates the
+	     * session database, or otherwise changes the state
+	     * of the program.
+	     */
+	    MUDC_LOG_INFO("Initiating CoA for Acct-Session-Id: %s\n", 
+		          sess->sessid);
+	    if (fork() == 0) { /* child */
+                sprintf(coa_command, "echo 'Acct-Session-Id=%s,Message-Authenticator=0x00,Cisco-AVPair=\"subscriber:command=reauthenticate\"' |  radclient -s %s:1700 coa %s", 
+			sess->sessid, sess->nas, mudmgr_coa_pw);
+                MUDC_LOG_INFO("COA command: %s\n", coa_command);
+                int sysret = system(coa_command);
+                MUDC_LOG_INFO("sysret: %d", sysret);
+		exit(0);
+            }
+        }
+    }
+}
+
 /* MUD File Server client handler */
 static void mudfs_handler(struct mg_connection *nc, int ev, void *ev_data) 
 {
     int ret=0;
-    char coa_command[1024];
     cJSON *parsed_json=NULL, *masa_json=NULL;
     unsigned int i=0;
     bool found=false;
@@ -1971,8 +1835,6 @@ static void mudfs_handler(struct mg_connection *nc, int ev, void *ev_data)
                 return;
             }
 
-            //MUDC_LOG_INFO("Got reply:\n%.*s\n", (int) hm->body.len, hm->body.p);
-            //MUDC_LOG_INFO("\nctx->uri: %s\n", ctx->uri);
             for (i=0; i<hm->body.len-1; i++) {
                 if (hm->body.p[i] == '\n' && hm->body.p[i+1] == '\n') {
                     if ((hm->body.len - i) > 2) {
@@ -1982,7 +1844,6 @@ static void mudfs_handler(struct mg_connection *nc, int ev, void *ev_data)
                     }
                 }
             }
-            //MUDC_LOG_INFO("\nreply:\n%s\n", hm->body.p+i);
             if (!found) {
                 MUDC_LOG_ERR("Failed to strip off MIME header");
                 send_error_for_context(ctx, 500, "error from FS\n");
@@ -2004,7 +1865,9 @@ static void mudfs_handler(struct mg_connection *nc, int ev, void *ev_data)
                     MUDC_LOG_ERR("Unable to request signature file");
                     send_error_for_context(ctx, 500, "error from FS\n");
                 } else {
-                    send_mudfs_request(nc, ctx->uri, requri, ctx->mac_addr, ctx->nas, ctx->sess_id, 0, true); // send_client_response value ignored here
+		    // send_client_response value ignored here
+                    send_mudfs_request(nc, ctx->uri, requri, ctx->mac_addr, 
+				       ctx->nas, ctx->sess_id, 0, true); 
                 }
             } else if (ctx->status == REQUEST_MUD_SIGNATURE_FILE) {
                 ctx->signed_mud = calloc((int)hm->body.len, sizeof(char));
@@ -2045,51 +1908,30 @@ static void mudfs_handler(struct mg_connection *nc, int ev, void *ev_data)
                                 MUDC_LOG_INFO("MAC address database is NOT updated with its URL\n");
 			    }
                             if(update_policy_database(ctx, parsed_json)) {
+				sessions_info *sess = NULL;
+
                                 MUDC_LOG_INFO("Policy database is updated successfully\n");
                                 if (ctx->send_client_response == false) {
                                     goto jump; 
                                 }
                                 send_response(ctx->in, parsed_json);
-    				start_session(nc, ctx->uri, ctx->mac_addr, ctx->nas, ctx->sess_id);
+    				start_session(nc, ctx->uri, ctx->mac_addr, 
+					      ctx->nas, ctx->sess_id);
 
-                                // Check if COA is required and has sufficient info 
-                                MUDC_LOG_INFO("Checking if COA is required\n");
-                                if (ctx->mac_addr != NULL && strcmp(ctx->mac_addr, "NA")) {
-				    MUDC_LOG_INFO("COA could be performed for MAC Address <%s>\n", ctx->mac_addr);
-				    if (ctx->sess_id == NULL) {
-					MUDC_LOG_INFO("... but cannot do CoA: Session ID is NULL\n");
-				    } else if (ctx->nas == NULL) {
-					MUDC_LOG_INFO("... but cannot do CoA: NAS is NULL\n");
-				    } else if (mudmgr_coa_pw == NULL) {
-   	    				MUDC_LOG_INFO("... but cannot do CoA: CoA password is not found\n");
-				    } else {
-					/* 
-					 * system(3) blocks, which can cause problems if it takes
-					 * too long. Other messages for the this session 
-					 * (such as the an Access-Request) may block and we 
-					 * falsely return an Acesss-Reject because the rest 
-					 * module times out. So we avoid this by fork(2)ing off a 
-					 * child proecess to do the CoA asynchronously.
-					 *
-					 * WARNING: Don't put any code here that updates the
-					 * session database, or otherwise changes the state
-					 * of the program.
-					 */
-					MUDC_LOG_INFO("Initiating CoA for Acct-Session-Id: %s\n", ctx->sess_id);
-					if (fork() == 0) { /* child */
-                                        	sprintf(coa_command, "echo 'Acct-Session-Id=%s,Message-Authenticator=0x00,Cisco-AVPair=\"subscriber:command=reauthenticate\"' |  radclient -s %s:1700 coa %s", ctx->sess_id, ctx->nas, mudmgr_coa_pw);
-                                        	MUDC_LOG_INFO("COA command: %s\n", coa_command);
-                                        	int sysret = system(coa_command);
-                                                MUDC_LOG_INFO("sysret: %d", sysret);
-						exit(0);
-                                    	}
-				    }
-                                }
-                                //send_response(ctx->in, parsed_json);
-    				//start_session(nc, ctx->uri, ctx->mac_addr, ctx->nas, ctx->sess_id);
+                                /*
+				 * Check if COA is required and has sufficient 
+				 * info 
+				 */
+				sess = find_session(ctx->mac_addr);
+				if (sess) {
+				    attempt_coa(sess);
+				} else {
+				    MUDC_LOG_ERR("Could not do CoA: no session found for MAC address %s", ctx->mac_addr);
+				}
                             } else {
                                 MUDC_LOG_ERR("Database update failed\n");
-                                send_error_for_context(ctx, 500, "internal error\n");
+                                send_error_for_context(ctx, 500, 
+					               "internal error\n");
                             }
                         }
                     jump:
@@ -2199,13 +2041,17 @@ err:
     free_request_context(ctx);
 }
 
+/*
+ * This code responds to a REST API of /getaclpolicy.
+ */
 static void handle_ace_call(struct mg_connection *nc, struct http_message *hm) 
 {
     bson_t *filter=NULL;
     const bson_t *record=NULL;
     mongoc_cursor_t *cursor=NULL;
     char *found_str=NULL, *response_str=NULL, *dacl_str = NULL, *acl_name=NULL;
-    cJSON *json=NULL, *jsonResponse=NULL, *dacl_req=NULL, *dacl=NULL, *dacl_list;
+    cJSON *json=NULL, *jsonResponse=NULL, *dacl_req=NULL, *dacl=NULL; 
+    cJSON *dacl_list;
     int response_len=0, index=0;
     char policy_name[64];
 
@@ -2214,19 +2060,38 @@ static void handle_ace_call(struct mg_connection *nc, struct http_message *hm)
         return;
     }
 
+    /*
+     * Find the ACLs with the requested name.
+     * 
+     * NOTE: The database should really have just the base ACL name,
+     *       and here we lookup the base ACL name and then give it to
+     *       the ACL type specific code (e.g., CISCO_DACL) to expand the name
+     *       and do all of the ACL type processsing in the appropriate file.
+     */
+    switch (acl_response) {
+	case CISCO_DACL:
+    	    dacl_req = cJSON_Parse((char*)hm->body.p);
+    	    acl_name = GETSTR_JSONOBJ(dacl_req, "ACL_NAME");
+    	    sprintf(policy_name, "%sCiscoSecure-Defined-ACL=%s", 
+		    acl_list_prefix, acl_name); 
+    	    MUDC_LOG_INFO("ACL Name <%s>\n", acl_name);
 
-    dacl_req = cJSON_Parse((char*)hm->body.p);
-    acl_name = GETSTR_JSONOBJ(dacl_req, "ACL_NAME");
-    sprintf(policy_name, "%sCiscoSecure-Defined-ACL=%s", acl_list_prefix, acl_name); 
-    MUDC_LOG_INFO("ACL Name <%s>\n", acl_name);
+    	    filter = BCON_NEW("DACL_Name", BCON_UTF8(policy_name));
+    	    cursor = mongoc_collection_find_with_opts(policies_collection, 
+		    	filter, NULL, NULL);
 
-    filter = BCON_NEW("DACL_Name", BCON_UTF8(policy_name));
-    cursor = mongoc_collection_find_with_opts(policies_collection, filter,
-	    				      NULL, NULL);
-
-    jsonResponse = cJSON_CreateObject();
-    cJSON_AddItemToObject(jsonResponse, "User-Name", cJSON_CreateString(acl_name));
-    cJSON_AddItemToObject(jsonResponse, "Cisco-AVPair", dacl_list = cJSON_CreateArray());
+    	    jsonResponse = cJSON_CreateObject();
+    	    cJSON_AddItemToObject(jsonResponse, "User-Name", 
+			      	  cJSON_CreateString(acl_name));
+    	    cJSON_AddItemToObject(jsonResponse, "Cisco-AVPair", 
+			          dacl_list = cJSON_CreateArray());
+	    break;
+	default:
+	    MUDC_LOG_ERR("Unknown ACL type: %d\n", acl_response);
+	    dacl_list = NULL;
+	    break;
+    }
+	    
     MUDC_LOG_INFO("Create Array \n");
     while (mongoc_cursor_next(cursor, &record)) {
         found_str = bson_as_json(record, NULL);
@@ -2241,7 +2106,9 @@ static void handle_ace_call(struct mg_connection *nc, struct http_message *hm)
                 dacl = cJSON_Parse(dacl_str);
                 size = cJSON_GetArraySize(dacl);
                 for (index=0;index < size; index++) {
-                    cJSON_AddItemToArray(dacl_list, cJSON_Duplicate(cJSON_GetArrayItem(dacl,index), true));
+                    cJSON_AddItemToArray(dacl_list, 
+			    cJSON_Duplicate(cJSON_GetArrayItem(dacl,index), 
+			    true));
                 }
                 cJSON_Delete(json);
                 cJSON_Delete(dacl);
@@ -2274,6 +2141,8 @@ static void handle_coa_alert(struct mg_connection *nc, struct http_message *hm)
     cJSON *request_json=NULL;
     sessions_info *sess=NULL;
     int sysret=0;
+
+    MUDC_LOG_INFO("Received COA Alert\n");
     
     if (nc == NULL || hm == NULL || strlen(hm->body.p) == 0) {
         MUDC_LOG_ERR("invalid parameters\n");
@@ -2315,9 +2184,10 @@ static void handle_coa_alert(struct mg_connection *nc, struct http_message *hm)
 	} else {
     	    MUDC_LOG_INFO("Initiating CoA Alert\n");
 	    /*
-	     * Note: Because we need to remove the session, we should not do a fork() here.
-	     * Or if a fork() is needed, then remove_session should be called first, after
-	     * extracting whatever information that the CoA needs.
+	     * Note: Because we need to remove the session, we should not do a 
+	     * fork() here. Or if a fork() is needed, then remove_session 
+	     * should be called first, after extracting whatever information 
+	     * that the CoA needs.
 	     */
             sprintf(coa_command, "echo 'Acct-Session-Id=%s,Message-Authenticator=0x00,Cisco-AVPair=\"subscriber:command=reauthenticate\"' |  radclient -s %s:1700 disconnect %s", sess->sessid, sess->nas, mudmgr_coa_pw);
             MUDC_LOG_INFO("COA command: %s\n", coa_command);
@@ -2383,6 +2253,9 @@ MUDC_LOG_INFO("ip: %s, filename: %s", ip, filename);
     return true;
 }
 
+/*
+ * This code responds to a REST API of /getmasauri.
+ */
 static void handle_get_masa_uri(struct mg_connection *nc, struct http_message *hm) 
 {
     char *uri=NULL;
@@ -2410,6 +2283,8 @@ static void handle_get_masa_uri(struct mg_connection *nc, struct http_message *h
 }
 
 /*
+ * This code responds to a REST API of /getaclname.
+ *
  * We're looking for one or more ACL names to return. We might be given a
  * MAC Address and/or a MUD URL as the key for the lookup.
  * MAC Address:
@@ -2474,7 +2349,8 @@ static void handle_get_aclname(struct mg_connection *nc, struct http_message *hm
 	 */
 	found_uri = fetch_uri_from_macaddr(mac_addr);
 	if (found_uri) {
-	    MUDC_LOG_INFO("Found URI %s for MAC address %s\n", found_uri, mac_addr);
+	    MUDC_LOG_INFO("Found URI %s for MAC address %s\n", found_uri, 
+		    	  mac_addr);
 	    if (uri == NULL) {
 	    	/*
 	     	* TBD: Check if found_uri != uri and issue a warning.
@@ -2482,11 +2358,15 @@ static void handle_get_aclname(struct mg_connection *nc, struct http_message *hm
 	    	uri = found_uri;
 	    }
 	} else {
-	    MUDC_LOG_INFO("No URL found in macaddr db for MAC address %s\n", mac_addr);
+	    MUDC_LOG_INFO("No URL found in macaddr db for MAC address %s\n", 
+		    	  mac_addr);
 	    /*
 	     * If we later find a valid URI associated with this
 	     * MAC address, we can stuff it away in the
 	     * macaddr database.
+	     *
+	     * We also should add a session to the sessions database too if
+	     * it turns out that we find a URL for this MAC address.
 	     */
 	    can_store_valid_uri = 1;
 	}
@@ -2494,7 +2374,7 @@ static void handle_get_aclname(struct mg_connection *nc, struct http_message *hm
 
     /*
      * uri was either passed in from the message, or we discovered it
-     * above.
+     * above. But if it wasn't found in either palce, we're done.
      */
     if (uri == NULL) {
 	/*
@@ -2527,7 +2407,7 @@ static void handle_get_aclname(struct mg_connection *nc, struct http_message *hm
 
     /*
      * Look to see if policies have alrady been generated for this MUD URL.
-     * If they are found they are put into the return buffer.
+     * If they are found, put them into the return buffer.
      */
 
     foundacls = query_policies_by_uri(nc, uri, false, &cache_expired);
@@ -2537,6 +2417,22 @@ static void handle_get_aclname(struct mg_connection *nc, struct http_message *hm
 	    (void) put_uri_into_macaddr(mac_addr, uri);
 	}
 	start_session(nc, uri, mac_addr, nas, session_id);
+
+	/*
+	 * Now, if we stored a URI for this MAC Address, we shoud also send 
+	 * a COA if possible. But first, we have to find the session context 
+	 * that was just created.
+	 */
+	if (can_store_valid_uri) {
+    	    sessions_info *sess=NULL;
+
+	    sess = find_session(mac_addr);
+	    if (sess) {
+	    	attempt_coa(sess);
+	    } else {
+	    	MUDC_LOG_ERR("Could not do CoA for MAC addr %s", mac_addr);
+	    }
+	}
         if (cache_expired == false) {
             goto end;
         }
@@ -2602,7 +2498,6 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data)
             } else if (mg_vcmp(&hm->uri, "/getmasauri") == 0) {
                 handle_get_masa_uri(nc, hm);
             } else if (mg_vcmp(&hm->uri, "/alertcoa") == 0) {
-		MUDC_LOG_INFO("Received COA Alert\n");
                 handle_coa_alert(nc, hm);
             } else {
                 mg_serve_http(nc, hm, s_http_server_opts); /* Serve static content */
