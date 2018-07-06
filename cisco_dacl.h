@@ -9,3 +9,6 @@ extern cJSON *defacl_v6_json;
 
 cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
 			     	enum acl_direction direction);
+
+cJSON* get_cisco_dacl_policy(char *acl_name);
+

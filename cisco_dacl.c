@@ -6,10 +6,16 @@
  */
 #include <mongoose.h>
 #include <cJSON.h>
+#pragma GCC diagnostic push // suppress specific warning from 3rd-party code
+#pragma GCC diagnostic ignored "-Wexpansion-to-defined"
+#include <mongoc.h>
+#pragma GCC diagnostic pop
 #include "acl.h"
 #include "log.h"
 #include "acl_types.h"
 #include "cisco_dacl.h"
+
+extern mongoc_collection_t *policies_collection;
 
 /*
  * Return Cisco DACL RADIUS attributes.
@@ -41,7 +47,7 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
 
         response_acl = cJSON_CreateObject();
         if (response_acl == NULL) {
-            MUDC_LOG_ERR("Error allocating resposne_acl");
+            MUDC_LOG_ERR("Error allocating response_acl");
             cJSON_Delete(parsed_json);
             return NULL;
         }
@@ -169,3 +175,68 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
     }
     return(parsed_json);
 }
+
+cJSON* get_cisco_dacl_policy(char *acl_name)
+{
+    char policy_name[64];
+    bson_t *filter=NULL;
+    const bson_t *record=NULL;
+    mongoc_cursor_t *cursor=NULL;
+    char *found_str=NULL, *dacl_str = NULL;
+    cJSON *jsonResponse=NULL;
+    cJSON *dacl_list;
+    cJSON *json=NULL, *dacl=NULL; 
+    int index=0;
+
+    sprintf(policy_name, "%sCiscoSecure-Defined-ACL=%s", 
+	    acl_list_prefix, acl_name); 
+    MUDC_LOG_INFO("ACL Name <%s>\n", acl_name);
+
+    filter = BCON_NEW("DACL_Name", BCON_UTF8(policy_name));
+    cursor = mongoc_collection_find_with_opts(policies_collection, 
+		    			      filter, NULL, NULL);
+
+    jsonResponse = cJSON_CreateObject();
+    cJSON_AddItemToObject(jsonResponse, "User-Name", 
+		      	  cJSON_CreateString(acl_name));
+    cJSON_AddItemToObject(jsonResponse, "Cisco-AVPair", 
+		          dacl_list = cJSON_CreateArray());
+    
+    MUDC_LOG_INFO("Create Array \n");
+    while (mongoc_cursor_next(cursor, &record)) {
+        found_str = bson_as_json(record, NULL);
+        if (found_str!=NULL) {
+            MUDC_LOG_INFO("found the record <%s>\n", found_str);
+            json = cJSON_Parse(found_str);
+            if (!json) {
+                MUDC_LOG_ERR("Error Before: [%s]\n", cJSON_GetErrorPtr());
+            } else {
+                int size = 0;
+                dacl_str = GETSTR_JSONOBJ(json,"DACL");
+                dacl = cJSON_Parse(dacl_str);
+                size = cJSON_GetArraySize(dacl);
+                for (index=0;index < size; index++) {
+                    cJSON_AddItemToArray(dacl_list, 
+			    cJSON_Duplicate(cJSON_GetArrayItem(dacl,index), 
+			    true));
+                }
+                cJSON_Delete(json);
+                cJSON_Delete(dacl);
+            }
+            bson_free(found_str);
+        }
+    }
+    
+    if (cJSON_GetArraySize(dacl_list) <= 0) {
+        MUDC_LOG_ERR("No DACLs found.");
+	cJSON_Delete(dacl_list);
+	cJSON_Delete(jsonResponse);
+        jsonResponse = NULL;
+    }
+    
+    mongoc_cursor_destroy(cursor);
+    bson_destroy(filter);
+
+    return jsonResponse;
+}
+
