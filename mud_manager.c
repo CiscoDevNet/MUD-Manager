@@ -52,7 +52,7 @@ const char *mudmgr_server=NULL;
 const char *mudmgr_coa_pw=NULL;
 const char *acl_list_prefix = NULL;
 int acl_list_type = INGRESS_EGRESS_ACLS;
-enum acl_response_type acl_response = CISCO_DACL;
+enum acl_policy_type acl_type = CISCO_DACL;
 mongoc_client_t *client=NULL;
 mongoc_collection_t *policies_collection=NULL;
 mongoc_collection_t *mudfile_collection=NULL;
@@ -1171,7 +1171,7 @@ static cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	}
     }
     MUDC_LOG_INFO("Calling Create response\n");
-    response_json = create_policy_from_acllist(CISCO_DACL, acllist, acl_count,
+    response_json = create_policy_from_acllist(acl_type, acllist, acl_count,
 	    				       acl_list_type);
    
     /*
@@ -2044,16 +2044,12 @@ err:
 /*
  * This code responds to a REST API of /getaclpolicy.
  */
-static void handle_ace_call(struct mg_connection *nc, struct http_message *hm) 
+static void handle_get_acl_policy(struct mg_connection *nc, 
+				  struct http_message *hm) 
 {
-    bson_t *filter=NULL;
-    const bson_t *record=NULL;
-    mongoc_cursor_t *cursor=NULL;
-    char *found_str=NULL, *response_str=NULL, *dacl_str = NULL, *acl_name=NULL;
-    cJSON *json=NULL, *jsonResponse=NULL, *dacl_req=NULL, *dacl=NULL; 
-    cJSON *dacl_list;
-    int response_len=0, index=0;
-    char policy_name[64];
+    cJSON *jsonResponse=NULL, *dacl_req=NULL;
+    int response_len=0;
+    char *acl_name=NULL,  *response_str=NULL;
 
     if (nc == NULL || hm == NULL || strlen(hm->body.p) == 0) {
         MUDC_LOG_ERR("invalid parameters\n");
@@ -2062,64 +2058,15 @@ static void handle_ace_call(struct mg_connection *nc, struct http_message *hm)
 
     /*
      * Find the ACLs with the requested name.
-     * 
-     * NOTE: The database should really have just the base ACL name,
-     *       and here we lookup the base ACL name and then give it to
-     *       the ACL type specific code (e.g., CISCO_DACL) to expand the name
-     *       and do all of the ACL type processsing in the appropriate file.
      */
-    switch (acl_response) {
-	case CISCO_DACL:
-    	    dacl_req = cJSON_Parse((char*)hm->body.p);
-    	    acl_name = GETSTR_JSONOBJ(dacl_req, "ACL_NAME");
-    	    sprintf(policy_name, "%sCiscoSecure-Defined-ACL=%s", 
-		    acl_list_prefix, acl_name); 
-    	    MUDC_LOG_INFO("ACL Name <%s>\n", acl_name);
-
-    	    filter = BCON_NEW("DACL_Name", BCON_UTF8(policy_name));
-    	    cursor = mongoc_collection_find_with_opts(policies_collection, 
-		    	filter, NULL, NULL);
-
-    	    jsonResponse = cJSON_CreateObject();
-    	    cJSON_AddItemToObject(jsonResponse, "User-Name", 
-			      	  cJSON_CreateString(acl_name));
-    	    cJSON_AddItemToObject(jsonResponse, "Cisco-AVPair", 
-			          dacl_list = cJSON_CreateArray());
-	    break;
-	default:
-	    MUDC_LOG_ERR("Unknown ACL type: %d\n", acl_response);
-	    dacl_list = NULL;
-	    break;
-    }
-	    
-    MUDC_LOG_INFO("Create Array \n");
-    while (mongoc_cursor_next(cursor, &record)) {
-        found_str = bson_as_json(record, NULL);
-        if (found_str!=NULL) {
-            MUDC_LOG_INFO("found the record <%s>\n", found_str);
-            json = cJSON_Parse(found_str);
-            if (!json) {
-                MUDC_LOG_ERR("Error Before: [%s]\n", cJSON_GetErrorPtr());
-            } else {
-                int size = 0;
-                dacl_str = GETSTR_JSONOBJ(json,"DACL");
-                dacl = cJSON_Parse(dacl_str);
-                size = cJSON_GetArraySize(dacl);
-                for (index=0;index < size; index++) {
-                    cJSON_AddItemToArray(dacl_list, 
-			    cJSON_Duplicate(cJSON_GetArrayItem(dacl,index), 
-			    true));
-                }
-                cJSON_Delete(json);
-                cJSON_Delete(dacl);
-            }
-            bson_free(found_str);
-        }
-    }
-    if (cJSON_GetArraySize(dacl_list) <= 0) {
+    dacl_req = cJSON_Parse((char*)hm->body.p);
+    acl_name = GETSTR_JSONOBJ(dacl_req, "ACL_NAME");
+    jsonResponse = get_policy_by_aclname(acl_type, acl_name);
+    if (jsonResponse == NULL) {
         send_error_result(nc, 500, "Internal Error");
         goto err;
     }
+
     response_str = cJSON_Print(jsonResponse);
     MUDC_LOG_INFO("\nResponse: %s\n", response_str);
     response_len = strlen(response_str);
@@ -2130,8 +2077,6 @@ static void handle_ace_call(struct mg_connection *nc, struct http_message *hm)
 err:
     cJSON_Delete(jsonResponse);
     cJSON_Delete(dacl_req);
-    mongoc_cursor_destroy(cursor);
-    bson_destroy(filter);
 }
 
 static void handle_coa_alert(struct mg_connection *nc, struct http_message *hm) 
@@ -2494,7 +2439,7 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data)
             if (mg_vcmp(&hm->uri, "/getaclname") == 0) {
                 handle_get_aclname(nc, hm); 
             } else if (mg_vcmp(&hm->uri, "/getaclpolicy") == 0) {
-                handle_ace_call(nc, hm);
+                handle_get_acl_policy(nc, hm);
             } else if (mg_vcmp(&hm->uri, "/getmasauri") == 0) {
                 handle_get_masa_uri(nc, hm);
             } else if (mg_vcmp(&hm->uri, "/alertcoa") == 0) {

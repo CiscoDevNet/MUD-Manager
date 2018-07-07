@@ -3,13 +3,16 @@
  * All rights reserved.
  */
 
-enum acl_response_type {
+enum acl_policy_type {
     CISCO_DACL,
 };
 
-cJSON* create_policy_from_acllist(enum acl_response_type response_type,
+cJSON* create_policy_from_acllist(enum acl_policy_type response_type,
 				  ACL *acllist, int acl_count, 
 			    	  enum acl_direction direction);
+
+cJSON* get_policy_by_aclname(enum acl_policy_type acl_type, char* acl_name);
+
 
 /*
  * Definitions used by code manipulating ACLs in the JSON file.
