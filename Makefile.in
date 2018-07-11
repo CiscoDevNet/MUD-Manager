@@ -873,7 +873,7 @@ uninstall-am: uninstall-binPROGRAMS uninstall-dist_binSCRIPTS \
 
 install-data-local:
 	if ! test -e ${sysconfdir}/mud_manager_conf.json ; then \
-	    ${INSTALL_DATA} ${sysconfdir}/mud_manager_conf.json; \
+	    ${INSTALL_DATA} $(srcdir)/mud_manager_conf.json ${sysconfdir}/mud_manager_conf.json; \
 	fi
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.

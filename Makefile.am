@@ -20,5 +20,5 @@ AM_CFLAGS = -DMG_ENABLE_SSL -Wall -W
 
 install-data-local:
 	if ! test -e ${sysconfdir}/mud_manager_conf.json ; then \
-	    ${INSTALL_DATA} ${sysconfdir}/mud_manager_conf.json; \
+	    ${INSTALL_DATA} $(srcdir)/mud_manager_conf.json ${sysconfdir}/mud_manager_conf.json; \
 	fi
