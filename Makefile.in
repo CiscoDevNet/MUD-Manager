@@ -95,7 +95,7 @@ am__aclocal_m4_deps = $(top_srcdir)/configure.ac
 am__configure_deps = $(am__aclocal_m4_deps) $(CONFIGURE_DEPENDENCIES) \
 	$(ACLOCAL_M4)
 DIST_COMMON = $(srcdir)/Makefile.am $(top_srcdir)/configure \
-	$(am__configure_deps) $(dist_bin_SCRIPTS) $(include_HEADERS) \
+	$(am__configure_deps) $(dist_bin_SCRIPTS) $(noinst_HEADERS) \
 	$(am__DIST_COMMON)
 am__CONFIG_DISTCLEAN_FILES = config.status config.cache config.log \
  configure.lineno config.status.lineno
@@ -103,8 +103,7 @@ mkinstalldirs = $(install_sh) -d
 CONFIG_HEADER = config.h
 CONFIG_CLEAN_FILES =
 CONFIG_CLEAN_VPATH_FILES =
-am__installdirs = "$(DESTDIR)$(bindir)" "$(DESTDIR)$(bindir)" \
-	"$(DESTDIR)$(includedir)"
+am__installdirs = "$(DESTDIR)$(bindir)" "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am_mud_manager_OBJECTS = mud_manager.$(OBJEXT) log.$(OBJEXT) \
 	sessions.$(OBJEXT) acl_types.$(OBJEXT) cisco_dacl.$(OBJEXT)
@@ -112,11 +111,11 @@ nodist_mud_manager_OBJECTS = mongoose.$(OBJEXT)
 mud_manager_OBJECTS = $(am_mud_manager_OBJECTS) \
 	$(nodist_mud_manager_OBJECTS)
 mud_manager_LDADD = $(LDADD)
+mud_manager_DEPENDENCIES =
 am_mud_test_client_OBJECTS = mud_test_client.$(OBJEXT)
-nodist_mud_test_client_OBJECTS = mongoose.$(OBJEXT)
-mud_test_client_OBJECTS = $(am_mud_test_client_OBJECTS) \
-	$(nodist_mud_test_client_OBJECTS)
+mud_test_client_OBJECTS = $(am_mud_test_client_OBJECTS)
 mud_test_client_LDADD = $(LDADD)
+mud_test_client_DEPENDENCIES =
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
 am__vpath_adj = case $$p in \
     $(srcdir)/*) f=`echo "$$p" | sed "s|^$$srcdirstrip/||"`;; \
@@ -174,14 +173,14 @@ am__v_CCLD_ = $(am__v_CCLD_@AM_DEFAULT_V@)
 am__v_CCLD_0 = @echo "  CCLD    " $@;
 am__v_CCLD_1 = 
 SOURCES = $(mud_manager_SOURCES) $(nodist_mud_manager_SOURCES) \
-	$(mud_test_client_SOURCES) $(nodist_mud_test_client_SOURCES)
+	$(mud_test_client_SOURCES)
 DIST_SOURCES = $(mud_manager_SOURCES) $(mud_test_client_SOURCES)
 am__can_run_installinfo = \
   case $$AM_UPDATE_INFO_DIR in \
     n|no|NO) false;; \
     *) (install-info --version) >/dev/null 2>&1;; \
   esac
-HEADERS = $(include_HEADERS)
+HEADERS = $(noinst_HEADERS)
 am__tagged_files = $(HEADERS) $(SOURCES) $(TAGS_FILES) \
 	$(LISP)config.h.in
 # Read a list of newline-separated strings from the standard input,
@@ -314,7 +313,7 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-include_HEADERS = acl.h log.h sessions.h acl_types.h cisco_dacl.h
+noinst_HEADERS = acl.h log.h sessions.h acl_types.h cisco_dacl.h
 dist_bin_SCRIPTS = dbtools/mud_clobber_db dbtools/mud_show_db
 AM_CPPFLAGS = -I$(top_srcdir) $(M_CPPFLAGS)
 mud_manager_SOURCES = mud_manager.c log.c sessions.c acl_types.c \
@@ -324,9 +323,11 @@ nodist_mud_manager_SOURCES = mongoose.c config.status config.cache config.log \
 			     configure.lineno config.status.lineno
 
 mud_test_client_SOURCES = mud_test_client.c
-nodist_mud_test_client_SOURCES = mongoose.c
 EXTRA_DIST = APIDOCS.txt LICENSE mud_manager_conf.json examples
 AM_CFLAGS = -DMG_ENABLE_SSL -Wall -W
+
+# This is temporary. It should be found in configure.ac
+LDADD = -lcurl
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
 
@@ -493,27 +494,6 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$<' object='$@' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(COMPILE) -c -o $@ `$(CYGPATH_W) '$<'`
-install-includeHEADERS: $(include_HEADERS)
-	@$(NORMAL_INSTALL)
-	@list='$(include_HEADERS)'; test -n "$(includedir)" || list=; \
-	if test -n "$$list"; then \
-	  echo " $(MKDIR_P) '$(DESTDIR)$(includedir)'"; \
-	  $(MKDIR_P) "$(DESTDIR)$(includedir)" || exit 1; \
-	fi; \
-	for p in $$list; do \
-	  if test -f "$$p"; then d=; else d="$(srcdir)/"; fi; \
-	  echo "$$d$$p"; \
-	done | $(am__base_list) | \
-	while read files; do \
-	  echo " $(INSTALL_HEADER) $$files '$(DESTDIR)$(includedir)'"; \
-	  $(INSTALL_HEADER) $$files "$(DESTDIR)$(includedir)" || exit $$?; \
-	done
-
-uninstall-includeHEADERS:
-	@$(NORMAL_UNINSTALL)
-	@list='$(include_HEADERS)'; test -n "$(includedir)" || list=; \
-	files=`for p in $$list; do echo $$p; done | sed -e 's|^.*/||'`; \
-	dir='$(DESTDIR)$(includedir)'; $(am__uninstall_files_from_dir)
 
 ID: $(am__tagged_files)
 	$(am__define_uniq_tagged_files); mkid -fID $$unique
@@ -741,7 +721,7 @@ check-am: all-am
 check: check-am
 all-am: Makefile $(PROGRAMS) $(SCRIPTS) $(HEADERS) config.h
 installdirs:
-	for dir in "$(DESTDIR)$(bindir)" "$(DESTDIR)$(bindir)" "$(DESTDIR)$(includedir)"; do \
+	for dir in "$(DESTDIR)$(bindir)" "$(DESTDIR)$(bindir)"; do \
 	  test -z "$$dir" || $(MKDIR_P) "$$dir"; \
 	done
 install: install-am
@@ -797,7 +777,7 @@ info: info-am
 
 info-am:
 
-install-data-am: install-data-local install-includeHEADERS
+install-data-am: install-data-local
 
 install-dvi: install-dvi-am
 
@@ -844,8 +824,7 @@ ps: ps-am
 
 ps-am:
 
-uninstall-am: uninstall-binPROGRAMS uninstall-dist_binSCRIPTS \
-	uninstall-includeHEADERS
+uninstall-am: uninstall-binPROGRAMS uninstall-dist_binSCRIPTS
 
 .MAKE: all install-am install-strip
 
@@ -859,14 +838,13 @@ uninstall-am: uninstall-binPROGRAMS uninstall-dist_binSCRIPTS \
 	install install-am install-binPROGRAMS install-data \
 	install-data-am install-data-local install-dist_binSCRIPTS \
 	install-dvi install-dvi-am install-exec install-exec-am \
-	install-html install-html-am install-includeHEADERS \
-	install-info install-info-am install-man install-pdf \
-	install-pdf-am install-ps install-ps-am install-strip \
-	installcheck installcheck-am installdirs maintainer-clean \
-	maintainer-clean-generic mostlyclean mostlyclean-compile \
-	mostlyclean-generic pdf pdf-am ps ps-am tags tags-am uninstall \
-	uninstall-am uninstall-binPROGRAMS uninstall-dist_binSCRIPTS \
-	uninstall-includeHEADERS
+	install-html install-html-am install-info install-info-am \
+	install-man install-pdf install-pdf-am install-ps \
+	install-ps-am install-strip installcheck installcheck-am \
+	installdirs maintainer-clean maintainer-clean-generic \
+	mostlyclean mostlyclean-compile mostlyclean-generic pdf pdf-am \
+	ps ps-am tags tags-am uninstall uninstall-am \
+	uninstall-binPROGRAMS uninstall-dist_binSCRIPTS
 
 .PRECIOUS: Makefile
 

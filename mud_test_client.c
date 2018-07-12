@@ -3,12 +3,17 @@
  * All rights reserved.
  */
 
-#include <mongoose.h>
+#include <signal.h>
+#include <string.h>
+#include <malloc.h>
+#include <getopt.h>
 #include <cJSON.h>
 #include <openssl/evp.h>
 
+#include <curl/curl.h>
+
 int s_exit_flag=0;
-struct mg_mgr mgr;
+
 #define MAX_STR_LEN 255
 
 #define WEBSERVERMAX 40
@@ -17,142 +22,151 @@ struct mg_mgr mgr;
 #define NASMAX 15
 #define SESSMAX 15
 
-#if 0
-static const char* cert="/home/cisco/workspace/enterprise-ca/certs_and_keys/testclient_cert.pem";
-static const char* key="/home/cisco/workspace/enterprise-ca/certs_and_keys/testclient_key.pem";
-static const char* ca_cert="/home/cisco/workspace/enterprise-ca/demoCA/cacert.pem";
-#endif
-
-struct mg_connect_opts connect_opts; 
-
 char mudcontroller_ip[WEBSERVERMAX];
+int mudcontroller_port;
 
 int test_client_get_dacl(char* uri, char* aclname);
 
-static void ev_handler(struct mg_connection *nc, int ev, void *ev_data) 
-{
-    struct http_message *hm = (struct http_message *) ev_data;
-    int connect_status, i;
-    cJSON* res_json, *acl_array;
-    char* uri;
-    uri = (char*)nc->user_data;
+/*
+ * Memory for callbacks
+ */
+struct MemoryStruct {
+      char *memory;
+        size_t size;
+};
 
-    switch (ev) {
-        case MG_EV_CONNECT:
-            connect_status = *(int *) ev_data;
-            if (connect_status != 0) {
-                printf("Error connecting to MUD Controller %s\n",
-                strerror(connect_status));
-                s_exit_flag = 1;
-            }
-            break;
-        case MG_EV_HTTP_REPLY:
-            printf("Got reply:\nResponse: <%d>: %.*s\n",hm->resp_code, 
-            (int)hm->body.len, hm->body.p);
-            if (hm->resp_code == 200) {
-                struct mg_str *con_type = mg_get_http_header(hm,"Content-Type");
-                if ((con_type != NULL) && 
-                        (!strncmp(con_type->p, "application/aclname", strlen("application/aclname")))) {
-                    printf("Got ACL Names\n");
-                    res_json = cJSON_Parse((char*)hm->body.p);
-                    printf("Response Json <%s>\n", cJSON_Print(res_json));
-                    acl_array = cJSON_GetObjectItem(res_json, "Cisco-AVPair");
-                    for (i=0; i< cJSON_GetArraySize(acl_array); i++) {
-                        printf("ACL Name %d: %s\n", i, 
-                        cJSON_GetArrayItem(acl_array, i)->valuestring);
-                        test_client_get_dacl(uri, cJSON_GetArrayItem(acl_array, i)->valuestring);
-                    }
-                } else if ((con_type != NULL) && 
-                            (!strncmp(con_type->p, "application/dacl", strlen("application/dacl")))) {
-                    printf("\n\nGot ACE <%.*s>\n", (int)hm->body.len, hm->body.p);
-                } else if ((con_type != NULL) && 
-                            (!strncmp(con_type->p, "application/masauri", strlen("application/masauri")))) {
-                    printf("\n\nGot MASA URI <%.*s>\n", (int)hm->body.len, hm->body.p);
-                }
-            } else {
-                s_exit_flag = 1;
-            }
-            nc->flags |= MG_F_SEND_AND_CLOSE;
-            break;
-        case MG_EV_CLOSE:
-            if (s_exit_flag == 0) {
-                printf("Server closed connection\n");
-            };
-            break;
-        default:
-            break;
+static size_t
+WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
+{
+    size_t realsize = size * nmemb;
+    struct MemoryStruct *mem = (struct MemoryStruct *)userp;
+	 
+    mem->memory = realloc(mem->memory, mem->size + realsize + 1);
+    if (mem->memory == NULL) {
+    	/* out of memory! */ 
+	printf("not enough memory (realloc returned NULL)\n");
+	return 0;
     }
+	     
+    memcpy(&(mem->memory[mem->size]), contents, realsize);
+    mem->size += realsize;
+    mem->memory[mem->size] = 0;
+		   
+    return realsize;
+}
+
+static size_t validateheaders(void *ptr, size_t size, size_t nmemb, 
+			      void *userdata)
+{
+    int s,r;
+    int code = 0;
+    int ret = size * nmemb; /* OK */
+    char contenttype[100];
+
+    char *header = (char *)userdata;
+
+    /*
+     * Check the HTTP return code.
+     */
+    s = strncmp(ptr, "HTTP/", 5);
+    if (s == 0) {
+	/* This should check for any HTTP version? */
+    	r = sscanf(ptr, "HTTP/1.1 %d OK\n", &code);
+    	if (r == 0) {
+	    printf("HTTP code not found\n");
+	    ret = 0;
+    	} else if (code != 200) {
+	    printf("Unexpected return code: %d\n", code);
+	    ret = 0;
+    	} 
+    }
+
+    s = sscanf(ptr, "Content-Type: %s\n", contenttype);
+    if (s) {
+    	/*
+     	 * Verify that the retrieved content-type is the expected one.
+     	 */
+	if (strncmp(contenttype, header, strlen(header))) {
+	    printf(" Unexpected Content-Type: %s\n", contenttype);
+	    ret = 0;
+	}
+    }
+
+    return ret;
 }
 
 static void test_client_initialize()
 {
-    OpenSSL_add_all_algorithms();
-    mg_mgr_init(&mgr, NULL);
+    	OpenSSL_add_all_algorithms();
 }
 
-int test_client_get_dacl(char* uri, char* aclname)
+char *fetch_json_info(CURL *curl, char *get_url, char *request_str, 
+		      int *response_len, char *response_app_string)
 {
-    struct mg_connection *nc;
-    char request_url[MAX_STR_LEN];
-    char* request_str;
-    cJSON *jsonRequest;
+    CURLcode res;
+    struct curl_slist *headers = NULL;
+    struct MemoryStruct response;
+    char exp_response_header[100];
 
-    sprintf(request_url, "http://%s/getaclpolicy", mudcontroller_ip);
-    jsonRequest = cJSON_CreateObject();
-    aclname = aclname + 28;
-    //cJSON_AddItemToObject(jsonRequest, "MUD_URI", 
-    //cJSON_CreateString((char*)uri));
-    cJSON_AddItemToObject(jsonRequest, "ACL_NAME", 
-    cJSON_CreateString((char*)aclname));
+    sprintf(exp_response_header, "application/%s", response_app_string);
 
-    request_str = cJSON_Print(jsonRequest);
-    printf ("Connect_opts: %s %s %s\n", connect_opts.ssl_cert, connect_opts.ssl_key, connect_opts.ssl_ca_cert );
-    nc = mg_connect_http_opt(&mgr, ev_handler, connect_opts, request_url, 
-                "Content-Type: application/json\r\nAccept: application/json\r\n", request_str);
-    printf("Send request: %s %s\n", request_url, request_str);
-    nc->user_data = (void*)uri;
-    mg_set_protocol_http_websocket(nc);
+    response.memory = malloc(1);  /* be grown as needed by the realloc above */ 
+    response.size = 0;    /* no data at this point */ 
 
-    return(1);
-}
-
-int test_client_get_masauri(char* uri)
-{
-    char *request_str;
-    struct mg_connection *nc;
-    int status=0;
-    cJSON *jsonRequest;
-    char get_url[MAX_STR_LEN];
-
-    jsonRequest = cJSON_CreateObject();
-    cJSON_AddItemToObject(jsonRequest, "MUD_URI", 
-    cJSON_CreateString((char*)uri));
-
-    request_str = cJSON_Print(jsonRequest);
-
-    sprintf(get_url, "http://%s/getmasauri",mudcontroller_ip);
-    printf("\nStarting RESTful client against %s\n", get_url);
-    nc = mg_connect_http_opt(&mgr, ev_handler, connect_opts, get_url, 
-                "Content-Type: application/json\r\nAccept: application/json\r\n", request_str);
-    nc->user_data = (void*)uri;
-    mg_set_protocol_http_websocket(nc);
-
-    while (s_exit_flag == 0) {
-        mg_mgr_poll(&mgr, 1000);
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 0L); /* Set to 1L for more output */
+    curl_easy_setopt(curl, CURLOPT_URL, get_url);
+    headers = curl_slist_append(headers, "Accept: application/json");
+    headers = curl_slist_append(headers, "Content-Type: application/json");
+    curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+    curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, validateheaders);
+    curl_easy_setopt(curl, CURLOPT_HEADERDATA, exp_response_header);
+    curl_easy_setopt(curl, CURLOPT_POSTFIELDS, request_str);
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
+    
+    res = curl_easy_perform(curl);
+    /* check for errors */ 
+    if (res != CURLE_OK) {
+        fprintf(stderr, "curl_easy_perform() failed: %s\n",
+	                 curl_easy_strerror(res));
+	return NULL;
     }
 
-    mg_mgr_free(&mgr);
-    return status;
+    /*
+     * Now, our response.memory points to a memory block that is response.size
+     * bytes big and contains the result.
+     */
+    *response_len = response.size;
+    
+    return response.memory;
 }
 
-int test_client_get_mudfile(char* uri, char* mac_addr, char* nas, char* sess_id)
+char *create_uri(char *command)
+{
+    char *get_url = malloc(MAX_STR_LEN);
+
+    if (mudcontroller_port) {
+    	sprintf(get_url, "http://%s:%d/%s", mudcontroller_ip, 
+		mudcontroller_port, command);
+    } else {
+    	sprintf(get_url, "http://%s/%s", mudcontroller_ip, command);
+    }
+    return get_url;
+}
+
+int test_client_get_acls(CURL *curl, char* uri, char* mac_addr, char* nas, 
+			 char* sess_id)
 {
     char *request_str;
-    struct mg_connection *nc;
-    int status=0;
     cJSON *jsonRequest;
-    char get_url[MAX_STR_LEN];
-
+    char *get_url;
+    int status = 0;
+    char *response;
+    int response_len = 0;
+    int i, j;
+    cJSON* res_json, *acl_name_array, *acl_array;
+    char *aclname, *full_aclname, *acl;
+    
     jsonRequest = cJSON_CreateObject();
     if (uri != NULL) {
         cJSON_AddItemToObject(jsonRequest, "MUD_URI", cJSON_CreateString((char*)uri));
@@ -169,19 +183,119 @@ int test_client_get_mudfile(char* uri, char* mac_addr, char* nas, char* sess_id)
 
     request_str = cJSON_Print(jsonRequest);
 
-    sprintf(get_url, "http://%s/getaclname",mudcontroller_ip);
-    printf ("Connect_opts: %s %s %s\n", connect_opts.ssl_cert, connect_opts.ssl_key, connect_opts.ssl_ca_cert );
+    get_url = create_uri("getaclname");
     printf("\nStarting RESTful client against %s\n", get_url);
-    nc = mg_connect_http_opt(&mgr, ev_handler, connect_opts, get_url, 
-                    "Content-Type: application/json\r\nAccept: application/json\r\n", request_str);
-    nc->user_data = (void*)uri;
-    mg_set_protocol_http_websocket(nc);
+    printf("    with request %s\n", request_str);
 
-    while (s_exit_flag == 0) {
-        mg_mgr_poll(&mgr, 1000);
+    /*
+     * Request an ACL name for this MUD URL.
+     */
+    response = fetch_json_info(curl, get_url, request_str, &response_len,
+	    		       "aclname");
+    if ((response_len == 0) && (!response)) {
+	fprintf(stderr, "Aborting. No ACL name found.\n");
+	return 1;
+    }
+    cJSON_Delete(jsonRequest);
+    free(get_url);
+    get_url = NULL;
+
+    get_url = create_uri("getaclpolicy");
+
+    printf("Got ACL Names\n");
+    res_json = cJSON_Parse((char*)response);
+    
+    acl_name_array = cJSON_GetObjectItem(res_json, "Cisco-AVPair");
+    for (i=0; i< cJSON_GetArraySize(acl_name_array); i++) {
+	full_aclname = cJSON_GetArrayItem(acl_name_array, i)->valuestring;
+    	printf("Full ACL Name %d: %s\n", i, full_aclname);
+
+	/*
+	 * Request the ACL for the ACL name. The requested ACL name
+	 * must be simply the ACL name, without the DACL framework.
+	 */
+	aclname = index(full_aclname, '=');
+	if (!aclname) {
+	    printf("Malformed ACL name: no = sign.\n");
+	    return 1;
+	}
+	aclname++; /* Skip past '=' */
+	printf("ACLname: %s\n", aclname);
+
+    	jsonRequest = cJSON_CreateObject();
+        cJSON_AddItemToObject(jsonRequest, "ACL_NAME", 
+	   		      cJSON_CreateString(aclname));
+    	request_str = cJSON_Print(jsonRequest);
+
+    	printf("\nStarting RESTful client against %s with request %s\n", 
+		get_url, request_str);
+    	response = fetch_json_info(curl, get_url, request_str, &response_len,
+				   "dacl");
+    	if ((response_len == 0) && (!response)) {
+	    fprintf(stderr, "Aborting. No ACL name found.\n");
+	    return 1;
+    	}
+    	cJSON_Delete(jsonRequest);
+    	free(get_url);
+
+    	res_json = cJSON_Parse((char*)response);
+	/*
+	 * Validate that the Username is the ACL name.
+	 */
+	printf("Username: %s\n",
+		cJSON_GetObjectItem(res_json, "User-Name")->valuestring);
+	printf("Got DACL contents:\n");
+    	acl_array = cJSON_GetObjectItem(res_json, "Cisco-AVPair");
+    	for (j=0; j< cJSON_GetArraySize(acl_array); j++) {
+		acl = cJSON_GetArrayItem(acl_array,j)->valuestring;
+		printf("\tACE: %s\n", acl);
+	}	
     }
 
-    mg_mgr_free(&mgr);
+    free(response);
+ 
+    /* we're done with libcurl, so clean it up */ 
+    curl_easy_cleanup(curl);
+
+    return status;
+}
+
+int test_client_get_masauri(CURL *curl, char* uri)
+{
+    char *request_str;
+    int status=0;
+    cJSON *jsonRequest, *res_json;
+    char *get_url;
+    char *response;
+    int response_len = 0;
+
+    jsonRequest = cJSON_CreateObject();
+    cJSON_AddItemToObject(jsonRequest, "MUD_URI", 
+    cJSON_CreateString((char*)uri));
+
+    request_str = cJSON_Print(jsonRequest);
+
+    get_url = create_uri("getmasauri");
+    printf("\nStarting RESTful client against %s\n", get_url);
+
+    /*
+     * Request an ACL name for this MUD URL.
+     */
+    response = fetch_json_info(curl, get_url, request_str, &response_len,
+	    		       "masauri");
+    if ((response_len == 0) && (!response)) {
+	fprintf(stderr, "Aborting. No MASA Server found.\n");
+	return 1;
+    }
+    cJSON_Delete(jsonRequest);
+    free(get_url);
+
+    res_json = cJSON_Parse((char*)response);
+    cJSON_Delete(jsonRequest);
+
+    printf("Got MASA URI: %s",
+    	cJSON_GetObjectItem(res_json, "MASA-URI")->valuestring);
+
     return status;
 }
 
@@ -204,14 +318,9 @@ int main(int argc, char *argv[])
     char sess_id[SESSMAX];
     int opt;
     char url[14+WEBSERVERMAX+MUDFILEMAX];
+    CURL *curl;
 
-    memset(&connect_opts, 0, sizeof(connect_opts));
-
-    //connect_opts.ssl_ca_cert = ca_cert;
-    //connect_opts.ssl_cert = cert;
-    //connect_opts.ssl_key = key;
-    //connect_opts.ssl_server_name = "*";
-    while ((opt = getopt(argc, argv, "a:n:s:bf:mw:c:")) != -1) {
+    while ((opt = getopt(argc, argv, "a:n:s:bf:mw:c:p:")) != -1) {
         switch (opt) {
             case 'a': 
                 testmudwithmac = 1;
@@ -238,20 +347,14 @@ int main(int argc, char *argv[])
             case 'c':
                 strncpy(mudcontroller_ip, optarg, WEBSERVERMAX);
                 break;
+            case 'p':
+                mudcontroller_port = atoi(optarg);
+                break;
             default:
                 usage(argv[0]);
                 exit(1);
         }
     }
-
-    /*
-     * Make sure we got a MUD server address.
-    if (argc - optind != 1 && argc - optind != 2) {
-        usage(argv[0]);
-        exit(1);
-    }
-    strncpy(mudcontroller_ip, argv[optind], WEBSERVERMAX);
-    */
 
     /*
      * Default is to test for a MUD file.
@@ -270,15 +373,17 @@ int main(int argc, char *argv[])
     strncat(url, "/", 1);
     strncat(url, mudfile, MUDFILEMAX);
 
+    curl = curl_easy_init();
+
     if (testmasa) {
-        test_client_get_masauri(url);
+        test_client_get_masauri(curl, url);
     }
+
     if (testmudwithmac) {
-        test_client_get_mudfile(url, mac_addr, nas, sess_id);
-        //test_client_get_mudfile(NULL, mac_addr);
+        test_client_get_acls(curl, url, mac_addr, nas, sess_id);
     } else if (testmud) {
         printf ("URL:  %s\n", url);
-        test_client_get_mudfile(url, NULL, NULL, NULL);
+        test_client_get_acls(curl, url, NULL, NULL, NULL);
     }
 
     return(0);
