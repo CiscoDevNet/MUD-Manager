@@ -2200,6 +2200,9 @@ MUDC_LOG_INFO("ip: %s, filename: %s", ip, filename);
 
 /*
  * This code responds to a REST API of /getmasauri.
+ *
+ * NOTE: This function should check the mudfile collecton for the MUD file
+ *       before fetching it from the MUD file server.
  */
 static void handle_get_masa_uri(struct mg_connection *nc, struct http_message *hm) 
 {
