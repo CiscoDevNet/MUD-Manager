@@ -17,6 +17,8 @@
 
 extern mongoc_collection_t *policies_collection;
 
+#define MAX_POLICY_NAME_LEN 100
+
 /*
  * Return Cisco DACL RADIUS attributes.
  */
@@ -25,7 +27,7 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
 {
     cJSON *response_acl=NULL, *parsed_json=NULL, *acefmt=NULL;
     char *ace_ptr=NULL, *acl_prefix=NULL;
-    char policy_name[80], ace_str[1024];
+    char policy_name[MAX_POLICY_NAME_LEN], ace_str[1024];
     int ace_index=0, index=0, i=0;
     char *txt=NULL;
     char *dnsname=NULL;
@@ -35,6 +37,7 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
         return NULL;
     }
 
+    memset(policy_name, 0, MAX_POLICY_NAME_LEN);
     parsed_json = cJSON_CreateArray();
     ace_ptr = ace_str;
 
@@ -178,7 +181,7 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
 
 cJSON* get_cisco_dacl_policy(char *acl_name)
 {
-    char policy_name[64];
+    char policy_name[MAX_POLICY_NAME_LEN];
     bson_t *filter=NULL;
     const bson_t *record=NULL;
     mongoc_cursor_t *cursor=NULL;
@@ -188,6 +191,7 @@ cJSON* get_cisco_dacl_policy(char *acl_name)
     cJSON *json=NULL, *dacl=NULL; 
     int index=0;
 
+    memset(policy_name, 0, MAX_POLICY_NAME_LEN);
     sprintf(policy_name, "%sCiscoSecure-Defined-ACL=%s", 
 	    acl_list_prefix, acl_name); 
     MUDC_LOG_INFO("ACL Name <%s>\n", acl_name);
@@ -229,7 +233,7 @@ cJSON* get_cisco_dacl_policy(char *acl_name)
     
     if (cJSON_GetArraySize(dacl_list) <= 0) {
         MUDC_LOG_ERR("No DACLs found.");
-	cJSON_Delete(dacl_list);
+	/* Deleting jsonResponse also frees memory for dacl_list */
 	cJSON_Delete(jsonResponse);
         jsonResponse = NULL;
     }
