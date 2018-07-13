@@ -250,7 +250,6 @@ else
 fi
 
 saved_LIBS="$LIBS"
-LIBS=""
 
 #
 # Find libcurl
