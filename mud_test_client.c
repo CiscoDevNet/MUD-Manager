@@ -60,6 +60,7 @@ static size_t validateheaders(void *ptr, size_t size, size_t nmemb,
 {
     int s,r;
     int code = 0;
+    char str[10];
     int ret = size * nmemb; /* OK */
     char contenttype[100];
 
@@ -70,8 +71,12 @@ static size_t validateheaders(void *ptr, size_t size, size_t nmemb,
      */
     s = strncmp(ptr, "HTTP/", 5);
     if (s == 0) {
-	/* This should check for any HTTP version? */
-    	r = sscanf(ptr, "HTTP/1.1 %d OK\n", &code);
+	/* 
+	 * Check for the code. The 'str' variable i unused, but
+	 * provides a sort of regular expression way to capture
+	 * the code, regardless of HTTP version.
+	 */
+	r = sscanf(ptr, "HTTP/%[^ ]%d OK", str, &code);
     	if (r == 0) {
 	    printf("HTTP code not found\n");
 	    ret = 0;
@@ -204,7 +209,6 @@ int test_client_get_acls(CURL *curl, char* uri, char* mac_addr, char* nas,
 
     printf("Got ACL Names\n");
     res_json = cJSON_Parse((char*)response);
-    
     acl_name_array = cJSON_GetObjectItem(res_json, "Cisco-AVPair");
     for (i=0; i< cJSON_GetArraySize(acl_name_array); i++) {
 	full_aclname = cJSON_GetArrayItem(acl_name_array, i)->valuestring;

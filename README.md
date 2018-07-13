@@ -46,6 +46,11 @@ Untar, cd into the mongo-c-driver-1.7.0 directory, and build it.
     ./configure --disable-automatic-init-and-cleanup --with-libbson=bundled
     make
     sudo make install
+
+### libcurl
+Libcurl is used to fetch MUD files from a MUD file server.
+
+    sudo apt-get install libcurl4-openssl-dev
  
 ### Mongoose
 You will need the mongoose package, which provides JSON utilities.

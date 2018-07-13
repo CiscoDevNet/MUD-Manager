@@ -252,6 +252,28 @@ fi
 saved_LIBS="$LIBS"
 LIBS=""
 
+#
+# Find libcurl
+#
+AC_ARG_WITH(libcurl,
+	    [  --with-libcurl=PATH     Specify path to libcurl],
+	[  if test "x$withval" = "xno" ; then
+    	       echo "libcurl library is required"; exit 1
+	   else
+		libcurldir=$withval
+	   fi
+	]
+)
+saved_LIBS="$LIBS"
+saved_CPPFLAGS="$CPPFLAGS"
+if test "x$libcurldir" = "x" ; then
+    # Not given. Check /usr/local
+    libcurldir=/usr/local/lib
+fi
+if test ! -d $libcurldir ; then
+    echo "libcurl directory $libcurldir doesn't exist. Where is it?"
+    exit 1
+fi
 AC_SEARCH_LIBS([dlopen], [dl], [], 
                [AC_MSG_ERROR([unable to find dl library])]
               )

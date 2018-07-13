@@ -16,10 +16,12 @@
 #include <mongoc.h>
 #pragma GCC diagnostic pop
 #include <cJSON.h>
+#include <curl/curl.h>
 #include "acl.h"
 #include "log.h"
 #include "sessions.h"
 #include "acl_types.h"
+#include "mud_fs_client.h"
 
 #define DACL_INGRESS_EGRESS 0
 #define DACL_INGRESS_ONLY 1
@@ -29,9 +31,6 @@
 
 #define FROM_DEVICE 0
 #define TO_DEVICE 1
-
-#define REQUEST_MUD_SIGNATURE_FILE 1
-#define REQUEST_MUD_JSON_FILE      2
 
 #define SRCPORT 1
 #define DSTPORT 2
@@ -60,7 +59,6 @@ mongoc_collection_t *macaddr_collection=NULL;
 
 typedef struct _request_context {
     struct mg_connection *in;
-    struct mg_connection *out;
     char *uri;
     char *mac_addr;
     char *sess_id;
@@ -69,7 +67,6 @@ typedef struct _request_context {
     int signed_mud_len;
     char *orig_mud;
     int orig_mud_len;
-    int status;
     int masaurirequest;
     bool send_client_response;
 } request_context;
@@ -102,12 +99,12 @@ int num_manu = 0;
 #define GETSTR_JSONARRAY(j,i) cJSON_GetArrayItem(defacl_json, i)->valuestring
 #define GETINT_JSONOBJ(j,v) cJSON_GetObjectItem(j,v) ? cJSON_GetObjectItem(j, v)->valueint: 0
 
-static void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
+extern void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
                                const char *requested_uri, const char* mac_addr, 
                                const char* nas, const char* sess_id, int flag,
                                bool send_client_response);
 
-static void send_error_result(struct mg_connection *nc, int status, const char *msg) 
+void send_error_result(struct mg_connection *nc, int status, const char *msg) 
 {
     int response_len = 0;
 
@@ -473,7 +470,7 @@ err:
     return false;
 }
 
-static cJSON *extract_masa_uri (request_context* ctx, char *mudcontent)
+cJSON *extract_masa_uri (request_context* ctx, char *mudcontent)
 {
     cJSON *mud_json=NULL, *meta_json=NULL, *response_json=NULL;
     cJSON *tmp_json=NULL;
@@ -770,7 +767,7 @@ static bool parse_mud_port(cJSON *port_json, ACE *ace, int direction)
     return(true);
 }
 
-static cJSON* parse_mud_content (request_context* ctx, int manuf_index)
+cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 {
     cJSON *full_json=NULL, *mud_json=NULL, *lists_json=NULL; 
     cJSON *acllist_json=NULL, *aclitem_json=NULL, *ace_json=NULL;
@@ -1201,7 +1198,7 @@ end:
 }
 
 // Return manufacturer index
-static int find_manufacturer(char* muduri) 
+int find_manufacturer(char* muduri) 
 {
     int j=0, ret=-1;
 
@@ -1349,7 +1346,7 @@ end:
     return found_acl;
 }
 
-static void start_session (struct mg_connection *nc,
+void start_session (struct mg_connection *nc,
                                       const char *requested_uri,
                                	      const char* mac_addr, 
                                	      const char* nas, const char* sess_id)
@@ -1392,7 +1389,7 @@ static void start_session (struct mg_connection *nc,
     return;
 }
 
-static int verify_mud_content(char* smud, int slen, char* omud, int olen) 
+int verify_mud_content(char* smud, int slen, char* omud, int olen) 
 {
     BIO *smud_bio=NULL, *omud_bio=NULL, *out=NULL;
     X509_STORE *st = NULL;
@@ -1492,7 +1489,7 @@ err:
 }
 
 
-static bool update_policy_database(request_context *ctx, cJSON* parsed_json)
+bool update_policy_database(request_context *ctx, cJSON* parsed_json)
 {
     bson_error_t error;
     bson_t *query=NULL, *update=NULL;
@@ -1622,7 +1619,7 @@ int put_uri_into_macaddr(char *mac_addr, char *uri)
     return(true);
 }
 
-static void send_masauri_response(struct mg_connection *nc, cJSON *response_json)
+void send_masauri_response(struct mg_connection *nc, cJSON *response_json)
 {
     int response_len=0;
     char* response_str=NULL;
@@ -1636,7 +1633,7 @@ static void send_masauri_response(struct mg_connection *nc, cJSON *response_json
     free(response_str);
 }
 
-static void send_response(struct mg_connection *nc, cJSON *parsed_json)
+void send_response(struct mg_connection *nc, cJSON *parsed_json)
 {
     int index=0, response_len=0, vlan=0;
     char *response_str=NULL;
@@ -1675,6 +1672,12 @@ static void send_response(struct mg_connection *nc, cJSON *parsed_json)
     nc->flags |= MG_F_SEND_AND_CLOSE;
 }
 
+/*
+ * The MUD draft allows for "mud-signature" to be included in the MUD file,
+ * pointing to the singature file. If it is not present, then the signature
+ * URL is assumed to be the same as the MUD URL, but with a .p7s file type
+ * rather than .json.
+ */
 bool get_mudfs_signed_uri (char *msg, char *uri, char *requri, int requri_len)
 {
     cJSON *json=NULL;
@@ -1770,208 +1773,38 @@ void attempt_coa(sessions_info *sess)
     }
 }
 
-/* MUD File Server client handler */
-static void mudfs_handler(struct mg_connection *nc, int ev, void *ev_data) 
-{
-    int ret=0;
-    cJSON *parsed_json=NULL, *masa_json=NULL;
-    unsigned int i=0;
-    bool found=false;
-    int connect_status;
-
-    struct http_message *hm = (struct http_message *) ev_data;
-    request_context *ctx = (request_context*)nc->user_data;
-
-    if (nc == NULL) { 
-        MUDC_LOG_ERR("mudfs_handler: invalid parameters");
-        return;
-    }
-
-    switch (ev) {
-        case MG_EV_CONNECT:
-            connect_status = *(int *)ev_data;
-            if (connect_status == 0) {
-                MUDC_LOG_INFO("mudFS connection successful");
-            } else {
-                MUDC_LOG_ERR("mudFS connection failed");
-                if (ctx != NULL) {
-                    send_error_for_context(ctx, 404, "Connect error");
-                    free_request_context(ctx);
-                    nc->user_data = NULL;
-                }
-                nc->flags |= MG_F_CLOSE_IMMEDIATELY;
-            }
-            mg_set_timer(nc, 0); // clear connect timer 
-            break;
-        case MG_EV_TIMER:
-            MUDC_LOG_ERR("Connection timed out");
-            if (ctx != NULL) {
-                send_error_for_context(ctx, 404, "Connect error");
-                free_request_context(ctx);
-            }
-            nc->flags |= MG_F_CLOSE_IMMEDIATELY;
-            nc->user_data = NULL;
-            break;
-        case MG_EV_HTTP_REPLY:
-            if (hm == NULL || ctx == NULL) { 
-                MUDC_LOG_ERR("mudfs_handler: invalid parameters");
-                if (ctx != NULL) {
-                    send_error_for_context(ctx, 500, "internal error FS");
-                    free_request_context(ctx);
-                }
-                return;
-            }
-
-            MUDC_LOG_INFO("Got reply:\n%.*s\n", (int) hm->body.len, hm->body.p);
-            MUDC_LOG_INFO("\nctx->uri: %s\n", ctx->uri);
-
-            MUDC_LOG_INFO("response code: %d", hm->resp_code);
-            if (hm->resp_code != 200) {
-                MUDC_LOG_ERR("Error response from FS: %d", hm->resp_code);
-                MUDC_LOG_ERR("message: %.*s", hm->body.len, hm->body.p);
-                send_error_for_context(ctx, 404, "error from FS\n");
-                free_request_context(ctx);
-                MUDC_LOG_INFO("exit");
-                return;
-            }
-
-            for (i=0; i<hm->body.len-1; i++) {
-                if (hm->body.p[i] == '\n' && hm->body.p[i+1] == '\n') {
-                    if ((hm->body.len - i) > 2) {
-                        found = true;
-                        i+=2;
-                        break;
-                    }
-                }
-            }
-            if (!found) {
-                MUDC_LOG_ERR("Failed to strip off MIME header");
-                send_error_for_context(ctx, 500, "error from FS\n");
-                free_request_context(ctx);
-                return;
-            }
-
-            
-            if (ctx->status == REQUEST_MUD_JSON_FILE) {
-                char requri[255];
-                memset(requri, 0, sizeof(requri));
-
-                ctx->orig_mud = calloc((int)hm->body.len, sizeof(char));
-                memcpy(ctx->orig_mud, hm->body.p+i, (int)hm->body.len-i);
-                ctx->orig_mud_len = hm->body.len-i;
-                if (!get_mudfs_signed_uri(ctx->orig_mud, ctx->uri, 
-                        requri, sizeof(requri)) ||
-                        strlen(requri) == 0) {
-                    MUDC_LOG_ERR("Unable to request signature file");
-                    send_error_for_context(ctx, 500, "error from FS\n");
-                } else {
-		    // send_client_response value ignored here
-                    send_mudfs_request(nc, ctx->uri, requri, ctx->mac_addr, 
-				       ctx->nas, ctx->sess_id, 0, true); 
-                }
-            } else if (ctx->status == REQUEST_MUD_SIGNATURE_FILE) {
-                ctx->signed_mud = calloc((int)hm->body.len, sizeof(char));
-                memcpy(ctx->signed_mud, hm->body.p+i, (int)hm->body.len-i);
-                ctx->signed_mud_len = hm->body.len-i;
-                ret = verify_mud_content(ctx->signed_mud, ctx->signed_mud_len, ctx->orig_mud, ctx->orig_mud_len);
-                if (ret != -1) {
-                    MUDC_LOG_INFO("Verification successful. Manufacturer Index <%d>\n", ret);
-                    if (ctx->masaurirequest == 1) {
-                        masa_json = extract_masa_uri(ctx, (char*)ctx->orig_mud);
-                        if (masa_json == NULL) {
-                            MUDC_LOG_ERR("Error in extracting MASA uri");
-                            send_error_for_context(ctx, 500, "missing masa uri");
-                        } else {
-                            send_masauri_response(ctx->in, masa_json);
-                            cJSON_Delete(masa_json);
-                        }
-                    } else {
-                        parsed_json = parse_mud_content(ctx, ret);
-                        if (!parsed_json) {
-                            MUDC_LOG_ERR("Error in parsing MUD file\n");
-                            send_error_for_context(ctx, 500, "error from FS\n");
-                        } else {
-			    /*
-			     * Update the MAC address and policy datbases with 
-			     * the newly downloaded and accepted MUD URI.
-			     *
-			     * Then, if we have a MAC address update the NAS
-			     * that has the RADIUS session by sending them a
-			     * Change of Authorization (COA), which causes 
-			     * them to re-authenticate the MAC address and in
-			     * the process they'll be given the policies.
-			     * (If a COA isn't done, the NAS won't know to come
-			     * back and fetch them, and the device will not
-			     * have the correct access.)
-			     */
-			    if (!put_uri_into_macaddr(ctx->mac_addr, ctx->uri)) {
-                                MUDC_LOG_INFO("MAC address database is NOT updated with its URL\n");
-			    }
-                            if(update_policy_database(ctx, parsed_json)) {
-				sessions_info *sess = NULL;
-
-                                MUDC_LOG_INFO("Policy database is updated successfully\n");
-                                if (ctx->send_client_response == false) {
-                                    goto jump; 
-                                }
-                                send_response(ctx->in, parsed_json);
-    				start_session(nc, ctx->uri, ctx->mac_addr, 
-					      ctx->nas, ctx->sess_id);
-
-                                /*
-				 * Check if COA is required and has sufficient 
-				 * info 
-				 */
-				sess = find_session(ctx->mac_addr);
-				if (sess) {
-				    attempt_coa(sess);
-				} else {
-				    MUDC_LOG_ERR("Could not do CoA: no session found for MAC address %s", ctx->mac_addr);
-				}
-                            } else {
-                                MUDC_LOG_ERR("Database update failed\n");
-                                send_error_for_context(ctx, 500, 
-					               "internal error\n");
-                            }
-                        }
-                    jump:
-                        cJSON_Delete(parsed_json);
-                    }
-                } else {
-                    MUDC_LOG_ERR("Verification failed\n");
-                    send_error_for_context(ctx, 500, "verification failed\n");
-                }
-                free_request_context(ctx);
-            }
-            break;
-        case MG_EV_CLOSE:
-            break;
-        default:
-            break;
-    }
-}
-
-static void send_mudfs_request(struct mg_connection *nc, const char *base_uri, 
+void send_mudfs_request(struct mg_connection *nc, const char *base_uri, 
                                const char *requested_uri, 
                                const char* mac_addr, 
                                const char* nas, const char* sess_id, int flag,
                                bool send_client_response) 
 {
-    struct mg_connection *mudfs_conn=NULL;
-    struct mg_connect_opts connect_opts;
     int manuf_idx=0;
     request_context *ctx=NULL;
     char requri[255], tmp_uri[255];
-    char *extra_headers=NULL;
+    CURL *curl;
+    char *response;
+    int response_len = 0;
+    int i;
+    bool found=false;
+    int ret=0;
+    cJSON *parsed_json=NULL, *masa_json=NULL;
 
     if (nc == NULL || base_uri == NULL) {
         MUDC_LOG_ERR("invalid parameters");
         return;
     }
+
+    /*
+     * Setup session to the MUD FS
+     */
+    curl = curl_easy_init();
     
     memset(requri, 0, sizeof(requri));
     memset(tmp_uri, 0, sizeof(tmp_uri));
 
+    /* Flag=1 (Want ACL policie) */
+    /* Flag=2 (Want MASA URI) */
     if (flag == 1 || flag == 2) {
         /*request for json file */
         ctx = (request_context*)calloc(1, sizeof(request_context));
@@ -1986,22 +1819,13 @@ static void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
         if (sess_id) {
             ctx->sess_id = strdup(sess_id);
         }
-        ctx->status = REQUEST_MUD_JSON_FILE;
         ctx->masaurirequest = (flag == 2) ? 1 : 0;
         ctx->send_client_response = send_client_response;
         snprintf(requri, sizeof(requri), "%s", requested_uri);
-        extra_headers = "Content-Type: application/mud+json\r\n" 
-                        "Accept: application/mud+json\r\n"
-                        "Accept-Language: en\r\n"
-                        "User-Agent: prototype-mud-manager\r\n";
     } else {
-        ctx = (request_context*)nc->user_data;
-        ctx->status = REQUEST_MUD_SIGNATURE_FILE;
-        snprintf(requri, sizeof(requri), "%s", requested_uri);
-        extra_headers = "Content-Type: application/mud+json\r\n" 
-                        "Accept: application/pkcs7-signed\r\n"
-                        "Accept-Language: en\r\n"
-                        "User-Agent: prototype-mud-manager\r\n";
+        MUDC_LOG_ERR("invalid flag");
+ 	send_error_for_context(ctx, 500, "internal error\n");
+        return;
     }
 
     manuf_idx = find_manufacturer(requri);
@@ -2022,23 +1846,153 @@ static void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     }
 
     MUDC_LOG_INFO("Request URI <%s> <%s>\n", requri, manuf_list[manuf_idx].certfile);
-    memset(&connect_opts, 0, sizeof(connect_opts));
-    connect_opts.ssl_ca_cert = manuf_list[manuf_idx].certfile;
-    connect_opts.ssl_server_name ="*";
-    mudfs_conn = mg_connect_http_opt(nc->mgr, mudfs_handler, connect_opts, requri, extra_headers, NULL);
-    if (mudfs_conn == NULL) {
-        goto err;
-    } else {
-        mudfs_conn->user_data = (void*)ctx;
-        mg_set_timer(mudfs_conn, mg_time() + 5);
-        MUDC_LOG_INFO("sending request <%s>\n", requri);
+
+    response = fetch_file(curl, requri, &response_len, "mud+json",
+	    		  manuf_list[manuf_idx].certfile);
+
+    /* Check return */
+    printf("MUD file: %s\n", response);
+
+    /*
+     * Remove MIME headers.
+     */
+    for (i=0; i<response_len-1; i++) {
+    	if (response[i] == '\n' && response[i+1] == '\n') {
+            if ((response_len - i) > 2) {
+        	found = true;
+                i+=2;
+                break;
+            }
+        }
+    }
+    if (!found) {
+    	MUDC_LOG_ERR("Failed to strip off MIME header");
+        send_error_for_context(ctx, 500, "error from FS\n");
+        free_request_context(ctx);
         return;
     }
+    ctx->orig_mud_len = response_len - i;
+    ctx->orig_mud = calloc(ctx->orig_mud_len, sizeof(char));
+    memcpy(ctx->orig_mud, response + i, ctx->orig_mud_len);
+
+    /* 
+     * Determine the signature file URL.
+     */
+    if (!get_mudfs_signed_uri(ctx->orig_mud, ctx->uri, requri, sizeof(requri)) 
+	    || strlen(requri) == 0) {
+	MUDC_LOG_ERR("Unable to request signature file");
+ 	send_error_for_context(ctx, 500, "error from FS\n");
+        return;
+    }
+   
+    /*
+     * Fetch the signature file and verify the signature.
+     */
+    response = fetch_file(curl, requri, &response_len, "pkcs7-signed",
+	    		  manuf_list[manuf_idx].certfile);
+  
+    found = false;
+    /*
+     * Remove MIME headers.
+     */
+    for (i=0; i<response_len-1; i++) {
+    	if (response[i] == '\n' && response[i+1] == '\n') {
+            if ((response_len - i) > 2) {
+        	found = true;
+                i+=2;
+                break;
+            }
+        }
+    }
+    if (!found) {
+    	MUDC_LOG_ERR("Failed to strip off MIME header");
+        send_error_for_context(ctx, 500, "error from FS\n");
+        free_request_context(ctx);
+        return;
+    }
+    ctx->signed_mud_len = response_len - i;
+    ctx->signed_mud = calloc(ctx->signed_mud_len, sizeof(char));
+    memcpy(ctx->signed_mud, response + i, ctx->signed_mud_len);
+
+    /* Check response */
+    ret = verify_mud_content(ctx->signed_mud, ctx->signed_mud_len, 
+	    		     ctx->orig_mud, ctx->orig_mud_len);
+    if (ret == -1) {
+    	MUDC_LOG_INFO("Verification failed. Manufacturer Index <%d>\n", ret);
+        send_error_for_context(ctx, 500, "verification failed\n");
+	return;
+    }
+
+    if (flag == 2) {
+    	masa_json = extract_masa_uri(ctx, (char*)ctx->orig_mud);
+        if (masa_json == NULL) {
+            MUDC_LOG_ERR("Error in extracting MASA uri");
+            send_error_for_context(ctx, 500, "missing masa uri");
+        } else {
+            send_masauri_response(ctx->in, masa_json);
+            cJSON_Delete(masa_json);
+        }
+    } else {
+        parsed_json = parse_mud_content(ctx, ret);
+        if (!parsed_json) {
+            MUDC_LOG_ERR("Error in parsing MUD file\n");
+            send_error_for_context(ctx, 500, "error from FS\n");
+        } else {
+	    /*
+	     * Update the MAC address and policy datbases with 
+	     * the newly downloaded and accepted MUD URI.
+	     *
+	     * Then, if we have a MAC address update the NAS
+	     * that has the RADIUS session by sending them a
+	     * Change of Authorization (COA), which causes 
+	     * them to re-authenticate the MAC address and in
+	     * the process they'll be given the policies.
+	     * (If a COA isn't done, the NAS won't know to come
+	     * back and fetch them, and the device will not
+	     * have the correct access.)
+	     */
+	    if (!put_uri_into_macaddr(ctx->mac_addr, ctx->uri)) {
+            	MUDC_LOG_INFO(
+			"MAC address database is NOT updated with its URL\n");
+	    }
+            if(update_policy_database(ctx, parsed_json)) {
+		sessions_info *sess = NULL;
+
+                MUDC_LOG_INFO("Policy database is updated successfully\n");
+                if (ctx->send_client_response == false) {
+                    goto jump; 
+                }
+                send_response(ctx->in, parsed_json);
+    		start_session(nc, ctx->uri, ctx->mac_addr, ctx->nas, 
+			      ctx->sess_id);
+
+                /*
+		 * Check if COA is required and has sufficient 
+		 * info 
+		 */
+		sess = find_session(ctx->mac_addr);
+		if (sess) {
+		    attempt_coa(sess);
+		} else {
+		    MUDC_LOG_ERR(
+		       "Could not do CoA: no session found for MAC address %s", 
+		       ctx->mac_addr);
+		}
+            } else {
+                MUDC_LOG_ERR("Database update failed\n");
+                send_error_for_context(ctx, 500, "internal error\n");
+            }
+       }   
+ jump:
+        cJSON_Delete(parsed_json);
+    }
+    return;
 
 err:
     MUDC_LOG_ERR("mudfs_conn failed\n");
     send_error_for_context(ctx, 404, "mudfs connection failed\n");
     free_request_context(ctx);
+    return;
 }
 
 /*

@@ -720,6 +720,7 @@ with_bson
 with_cjson
 with_cjson_utils
 with_mongoose
+with_libcurl
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1371,6 +1372,7 @@ Optional Packages:
   --with-cjson=PATH     Specify path to cjson library
   --with-cjson-utils=PATH     Specify path to cjson_utils library
   --with-mongoose=PATH     Specify path to mongoose
+  --with-libcurl=PATH     Specify path to libcurl
 
 Some influential environment variables:
   CC          C compiler command
@@ -4523,6 +4525,31 @@ fi
 saved_LIBS="$LIBS"
 LIBS=""
 
+#
+# Find libcurl
+#
+
+# Check whether --with-libcurl was given.
+if test "${with_libcurl+set}" = set; then :
+  withval=$with_libcurl;   if test "x$withval" = "xno" ; then
+    	       echo "libcurl library is required"; exit 1
+	   else
+		libcurldir=$withval
+	   fi
+
+
+fi
+
+saved_LIBS="$LIBS"
+saved_CPPFLAGS="$CPPFLAGS"
+if test "x$libcurldir" = "x" ; then
+    # Not given. Check /usr/local
+    libcurldir=/usr/local/lib
+fi
+if test ! -d $libcurldir ; then
+    echo "libcurl directory $libcurldir doesn't exist. Where is it?"
+    exit 1
+fi
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for library containing dlopen" >&5
 $as_echo_n "checking for library containing dlopen... " >&6; }
 if ${ac_cv_search_dlopen+:} false; then :

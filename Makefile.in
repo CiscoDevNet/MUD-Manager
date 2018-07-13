@@ -106,7 +106,8 @@ CONFIG_CLEAN_VPATH_FILES =
 am__installdirs = "$(DESTDIR)$(bindir)" "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am_mud_manager_OBJECTS = mud_manager.$(OBJEXT) log.$(OBJEXT) \
-	sessions.$(OBJEXT) acl_types.$(OBJEXT) cisco_dacl.$(OBJEXT)
+	sessions.$(OBJEXT) acl_types.$(OBJEXT) cisco_dacl.$(OBJEXT) \
+	mud_fs_client.$(OBJEXT)
 nodist_mud_manager_OBJECTS = mongoose.$(OBJEXT)
 mud_manager_OBJECTS = $(am_mud_manager_OBJECTS) \
 	$(nodist_mud_manager_OBJECTS)
@@ -313,11 +314,11 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-noinst_HEADERS = acl.h log.h sessions.h acl_types.h cisco_dacl.h
+noinst_HEADERS = acl.h log.h sessions.h acl_types.h cisco_dacl.h mud_fs_client.h
 dist_bin_SCRIPTS = dbtools/mud_clobber_db dbtools/mud_show_db
 AM_CPPFLAGS = -I$(top_srcdir) $(M_CPPFLAGS)
 mud_manager_SOURCES = mud_manager.c log.c sessions.c acl_types.c \
-		      cisco_dacl.c
+		      cisco_dacl.c mud_fs_client.c
 
 nodist_mud_manager_SOURCES = mongoose.c config.status config.cache config.log \
 			     configure.lineno config.status.lineno
@@ -477,6 +478,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cisco_dacl.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/log.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mongoose.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mud_fs_client.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mud_manager.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mud_test_client.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/sessions.Po@am__quote@
