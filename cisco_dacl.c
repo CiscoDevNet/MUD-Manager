@@ -4,7 +4,6 @@
  *
  * Create a Cisco DACL response for a RADIUS server.
  */
-#include <mongoose.h>
 #include <cJSON.h>
 #pragma GCC diagnostic push // suppress specific warning from 3rd-party code
 #pragma GCC diagnostic ignored "-Wexpansion-to-defined"

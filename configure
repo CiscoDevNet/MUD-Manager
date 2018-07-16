@@ -622,7 +622,6 @@ ac_subst_vars='am__EXEEXT_FALSE
 am__EXEEXT_TRUE
 LTLIBOBJS
 LIBOBJS
-M_CPPFLAGS
 EGREP
 GREP
 CPP
@@ -719,7 +718,6 @@ with_mongoc
 with_bson
 with_cjson
 with_cjson_utils
-with_mongoose
 with_libcurl
 '
       ac_precious_vars='build_alias
@@ -1371,7 +1369,6 @@ Optional Packages:
   --with-bson=PATH     Specify path to bson library
   --with-cjson=PATH     Specify path to cjson library
   --with-cjson-utils=PATH     Specify path to cjson_utils library
-  --with-mongoose=PATH     Specify path to mongoose
   --with-libcurl=PATH     Specify path to libcurl
 
 Some influential environment variables:
@@ -4491,38 +4488,6 @@ if test -f $cjson_utilslibdir/libcjson_utils.so ; then
     LIBS="$saved_LIBS -L$cjson_utilslibdir -l$shortlibname"
 fi
 
-#
-# Find mongoose
-#
-
-# Check whether --with-mongoose was given.
-if test "${with_mongoose+set}" = set; then :
-  withval=$with_mongoose;   if test "x$withval" = "xno" ; then
-    	       echo "Mongoose is required"; exit 1
-	   else
-		mmdir=$withval
-	   fi
-
-
-fi
-
-if test "x$mmdir" = "x" ; then
-    echo "Mongoose is required. use --with-mongoose=PATH"; exit 1
-fi
-if test -f $mmdir/mongoose.c ; then
-     echo "Copying mongoose.c from $mmdir"
-     cp -f $mmdir/mongoose.c .
-else
-    echo "mongoose.c is missing. Wrong directory?"; exit 1
-fi
-if test -f $mmdir/mongoose.h ; then
-    M_CPPFLAGS="-I${mmdir}"
-
-else
-    echo "mongoose.h is missing. Wrong directory?"; exit 1
-fi
-
-saved_LIBS="$LIBS"
 
 #
 # Find libcurl

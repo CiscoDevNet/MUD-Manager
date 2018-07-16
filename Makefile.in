@@ -107,8 +107,8 @@ am__installdirs = "$(DESTDIR)$(bindir)" "$(DESTDIR)$(bindir)"
 PROGRAMS = $(bin_PROGRAMS)
 am_mud_manager_OBJECTS = mud_manager.$(OBJEXT) log.$(OBJEXT) \
 	sessions.$(OBJEXT) acl_types.$(OBJEXT) cisco_dacl.$(OBJEXT) \
-	mud_fs_client.$(OBJEXT)
-nodist_mud_manager_OBJECTS = mongoose.$(OBJEXT)
+	mud_fs_client.$(OBJEXT) civetweb.$(OBJEXT)
+nodist_mud_manager_OBJECTS =
 mud_manager_OBJECTS = $(am_mud_manager_OBJECTS) \
 	$(nodist_mud_manager_OBJECTS)
 mud_manager_LDADD = $(LDADD)
@@ -161,6 +161,10 @@ DEFAULT_INCLUDES = -I.@am__isrc@
 depcomp = $(SHELL) $(top_srcdir)/config/depcomp
 am__depfiles_maybe = depfiles
 am__mv = mv -f
+AM_V_lt = $(am__v_lt_@AM_V@)
+am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
+am__v_lt_0 = --silent
+am__v_lt_1 = 
 COMPILE = $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) \
 	$(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS)
 AM_V_CC = $(am__v_CC_@AM_V@)
@@ -257,7 +261,6 @@ LIBS = @LIBS@
 LTLIBOBJS = @LTLIBOBJS@
 MAKEINFO = @MAKEINFO@
 MKDIR_P = @MKDIR_P@
-M_CPPFLAGS = @M_CPPFLAGS@
 OBJEXT = @OBJEXT@
 PACKAGE = @PACKAGE@
 PACKAGE_BUGREPORT = @PACKAGE_BUGREPORT@
@@ -314,17 +317,22 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-noinst_HEADERS = acl.h log.h sessions.h acl_types.h cisco_dacl.h mud_fs_client.h
-dist_bin_SCRIPTS = dbtools/mud_clobber_db dbtools/mud_show_db
-AM_CPPFLAGS = -I$(top_srcdir) $(M_CPPFLAGS)
-mud_manager_SOURCES = mud_manager.c log.c sessions.c acl_types.c \
-		      cisco_dacl.c mud_fs_client.c
+noinst_HEADERS = acl.h log.h sessions.h acl_types.h cisco_dacl.h \
+                 mud_fs_client.h
 
-nodist_mud_manager_SOURCES = mongoose.c config.status config.cache config.log \
+dist_bin_SCRIPTS = dbtools/mud_clobber_db dbtools/mud_show_db
+AM_CPPFLAGS = -I$(top_srcdir) $(M_CPPFLAGS) -I$(srcdir)/civetweb
+mud_manager_SOURCES = mud_manager.c log.c sessions.c acl_types.c \
+		      cisco_dacl.c mud_fs_client.c \
+		      civetweb/civetweb.c civetweb/civetweb.h
+
+nodist_mud_manager_SOURCES = config.status config.cache config.log \
 			     configure.lineno config.status.lineno
 
 mud_test_client_SOURCES = mud_test_client.c
-EXTRA_DIST = APIDOCS.txt LICENSE mud_manager_conf.json examples
+EXTRA_DIST = APIDOCS.txt LICENSE mud_manager_conf.json examples \
+       civetweb/md5.inl civetweb/sha1.inl civetweb/handle_form.inl civetweb/timer.inl
+
 AM_CFLAGS = -DMG_ENABLE_SSL -Wall -W
 
 # This is temporary. It should be found in configure.ac
@@ -476,8 +484,8 @@ distclean-compile:
 
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/acl_types.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/cisco_dacl.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/civetweb.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/log.Po@am__quote@
-@AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mongoose.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mud_fs_client.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mud_manager.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@./$(DEPDIR)/mud_test_client.Po@am__quote@
@@ -496,6 +504,20 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='$<' object='$@' libtool=no @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(COMPILE) -c -o $@ `$(CYGPATH_W) '$<'`
+
+civetweb.o: civetweb/civetweb.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT civetweb.o -MD -MP -MF $(DEPDIR)/civetweb.Tpo -c -o civetweb.o `test -f 'civetweb/civetweb.c' || echo '$(srcdir)/'`civetweb/civetweb.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/civetweb.Tpo $(DEPDIR)/civetweb.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='civetweb/civetweb.c' object='civetweb.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o civetweb.o `test -f 'civetweb/civetweb.c' || echo '$(srcdir)/'`civetweb/civetweb.c
+
+civetweb.obj: civetweb/civetweb.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT civetweb.obj -MD -MP -MF $(DEPDIR)/civetweb.Tpo -c -o civetweb.obj `if test -f 'civetweb/civetweb.c'; then $(CYGPATH_W) 'civetweb/civetweb.c'; else $(CYGPATH_W) '$(srcdir)/civetweb/civetweb.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) $(DEPDIR)/civetweb.Tpo $(DEPDIR)/civetweb.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='civetweb/civetweb.c' object='civetweb.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o civetweb.obj `if test -f 'civetweb/civetweb.c'; then $(CYGPATH_W) 'civetweb/civetweb.c'; else $(CYGPATH_W) '$(srcdir)/civetweb/civetweb.c'; fi`
 
 ID: $(am__tagged_files)
 	$(am__define_uniq_tagged_files); mkid -fID $$unique

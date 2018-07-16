@@ -4,7 +4,6 @@
  *
  * Handle different formats for ACL types.
  */
-#include <mongoose.h>
 #include <cJSON.h>
 #include "acl.h"
 #include "log.h"

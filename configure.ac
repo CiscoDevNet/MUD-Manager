@@ -221,35 +221,6 @@ if test -f $cjson_utilslibdir/libcjson_utils.so ; then
     LIBS="$saved_LIBS -L$cjson_utilslibdir -l$shortlibname"
 fi
 
-#
-# Find mongoose
-#
-AC_ARG_WITH(mongoose,
-	    [  --with-mongoose=PATH     Specify path to mongoose],
-	[  if test "x$withval" = "xno" ; then
-    	       echo "Mongoose is required"; exit 1
-	   else
-		mmdir=$withval
-	   fi
-	]
-)
-if test "x$mmdir" = "x" ; then
-    echo "Mongoose is required. use --with-mongoose=PATH"; exit 1
-fi
-if test -f $mmdir/mongoose.c ; then
-     echo "Copying mongoose.c from $mmdir"
-     cp -f $mmdir/mongoose.c .
-else
-    echo "mongoose.c is missing. Wrong directory?"; exit 1
-fi
-if test -f $mmdir/mongoose.h ; then
-    M_CPPFLAGS="-I${mmdir}"
-    AC_SUBST(M_CPPFLAGS)
-else
-    echo "mongoose.h is missing. Wrong directory?"; exit 1
-fi
-
-saved_LIBS="$LIBS"
 
 #
 # Find libcurl

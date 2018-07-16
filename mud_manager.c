@@ -3,7 +3,8 @@
  * All rights reserved.
  */
 
-#include <mongoose.h>
+#include <signal.h>
+#include <civetweb.h>
 #include <openssl/x509v3.h>
 #include <openssl/err.h>
 #include <openssl/asn1.h>
@@ -36,26 +37,29 @@
 #define DSTPORT 2
 
 static const char *s_http_port = "8000";
-static const char *s_https_port = "8443";
+static const char *s_https_port = "8443s";
 static const char *default_dbname = "mud_manager";
 static const char *default_policies_coll_name = "mud_policies";
 static const char *default_mudfile_coll_name = "mudfile";
 static const char *default_macaddr_coll_name = "macaddr";
 static const char *default_uri = "mongodb://127.0.0.1:27017";
-static struct mg_serve_http_opts s_http_server_opts;
+//static struct mg_serve_http_opts s_http_server_opts;
+static struct mg_context *mg_server_ctx=NULL;
 
-const char *mudmgr_cert=NULL;
-const char *mudmgr_CAcert=NULL;
-const char *mudmgr_key=NULL;
-const char *mudmgr_server=NULL;
-const char *mudmgr_coa_pw=NULL;
-const char *acl_list_prefix = NULL;
-int acl_list_type = INGRESS_EGRESS_ACLS;
-enum acl_policy_type acl_type = CISCO_DACL;
-mongoc_client_t *client=NULL;
+static const char *mudmgr_cert=NULL;
+static const char *mudmgr_CAcert=NULL;
+static const char *mudmgr_key=NULL;
+static const char *mudmgr_server=NULL;
+static const char *mudmgr_coa_pw=NULL;
+static int acl_list_type = INGRESS_EGRESS_ACLS;
+static enum acl_policy_type acl_type = CISCO_DACL;
+static mongoc_client_t *client=NULL;
+static mongoc_collection_t *mudfile_collection=NULL;
+static mongoc_collection_t *macaddr_collection=NULL;
+
+// referenced externally
 mongoc_collection_t *policies_collection=NULL;
-mongoc_collection_t *mudfile_collection=NULL;
-mongoc_collection_t *macaddr_collection=NULL;
+const char *acl_list_prefix = NULL;
 
 typedef struct _request_context {
     struct mg_connection *in;
@@ -83,28 +87,66 @@ typedef struct _manufacturer_list {
     char* local_nw_v6;
 } manufacturer_list;
 
-cJSON *dnsmap_json=NULL;
-cJSON *ctrlmap_json=NULL;
-cJSON *defacl_json=NULL;
-cJSON *dnsmap_v6_json=NULL;
-cJSON *ctrlmap_v6_json=NULL;
+// used externally
+cJSON *defacl_json=NULL; 
 cJSON *defacl_v6_json=NULL;
-manufacturer_list manuf_list[10];
-char *mongoDb_uristr=NULL, *mongoDb_policies_collection=NULL, *mongoDb_name=NULL;
-char *mongoDb_mudfile_coll=NULL;
-char *mongoDb_macaddr_coll=NULL;
-int num_manu = 0;
+// static
+static cJSON *config_json=NULL;
+static cJSON *dnsmap_json=NULL;
+static cJSON *ctrlmap_json=NULL;
+static cJSON *dnsmap_v6_json=NULL;
+static cJSON *ctrlmap_v6_json=NULL;
+static manufacturer_list manuf_list[10];
+static char *mongoDb_uristr=NULL, *mongoDb_policies_collection=NULL, *mongoDb_name=NULL;
+static char *mongoDb_mudfile_coll=NULL;
+static char *mongoDb_macaddr_coll=NULL;
+static int num_manu = 0;
 
 #define GETSTR_JSONOBJ(j,v) cJSON_GetObjectItem(j,v) ? cJSON_GetObjectItem(j, v)->valuestring: NULL
 #define GETSTR_JSONARRAY(j,i) cJSON_GetArrayItem(defacl_json, i)->valuestring
 #define GETINT_JSONOBJ(j,v) cJSON_GetObjectItem(j,v) ? cJSON_GetObjectItem(j, v)->valueint: 0
 
-extern void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
+void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
                                const char *requested_uri, const char* mac_addr, 
                                const char* nas, const char* sess_id, int flag,
                                bool send_client_response);
 
-void send_error_result(struct mg_connection *nc, int status, const char *msg) 
+
+static bool mudc_construct_head(struct mg_connection *nc, int status_code,
+                                int content_len, const char *extra_headers)
+{
+    char *buf = NULL;
+MUDC_LOG_INFO("status_code: %d, content_len: %d, extra_headers: %s",
+status_code, content_len, extra_headers);
+
+    buf = calloc(200 + (extra_headers?strlen(extra_headers):0), sizeof(char));
+    if (!buf) {
+        MUDC_LOG_ERR("malloc failed");
+        return false;
+    }
+
+    sprintf(buf, "HTTP/1.1 %d %s\r\n", status_code,
+              mg_get_response_code_text(nc, status_code));
+    if (extra_headers) {
+        sprintf(&buf[strlen(buf)], "%.*s\r\n", (int)strlen(extra_headers), extra_headers);
+    }
+    if (content_len >= 0) {
+        sprintf(&buf[strlen(buf)], "Content-Length: %d\r\n", content_len);
+    }
+    sprintf(&buf[strlen(buf)], "\r\n");
+    MUDC_LOG_INFO("HTTP header: %s", buf);
+    mg_printf(nc, "%s", buf);
+
+    return true;
+}
+
+#define MUDC_WRITE_DATA(nc, format, args ...) do { \
+    MUDC_LOG_INFO(format, ##args); \
+    mg_printf(nc, format, ##args); \
+} while (0)
+
+
+static void send_error_result(struct mg_connection *nc, int status, const char *msg) 
 {
     int response_len = 0;
 
@@ -113,9 +155,8 @@ void send_error_result(struct mg_connection *nc, int status, const char *msg)
         return;
     }
     response_len = strlen(msg);
-    mg_send_head(nc, status, response_len, NULL);
-    mg_printf(nc, "%.*s", response_len, msg);
-    nc->flags |= MG_F_SEND_AND_CLOSE;
+    mudc_construct_head(nc, status, response_len, NULL);
+    MUDC_WRITE_DATA(nc, "%.*s", response_len, msg);
 }
 
 static void send_error_for_context(request_context *ctx, int status, 
@@ -203,7 +244,7 @@ static int read_mudmgr_config (char* filename)
     BIO *conf_file=NULL, *certin=NULL;
     char jsondata[MAX_BUF+1];
     char *acl_list_type_str=NULL;
-    cJSON *json=NULL, *manuf_json=NULL, *tmp_json=NULL, *cacert_json=NULL;
+    cJSON *manuf_json=NULL, *tmp_json=NULL, *cacert_json=NULL;
     int ret=-1, i=0;
 
     if (!filename) {
@@ -216,30 +257,30 @@ static int read_mudmgr_config (char* filename)
     conf_file=BIO_new_file(filename, "r");
     BIO_read(conf_file, jsondata, MAX_BUF);
     BIO_free(conf_file);
-    json = cJSON_Parse(jsondata);
+    config_json = cJSON_Parse(jsondata);
 
-    if (!json) {
+    if (!config_json) {
         MUDC_LOG_ERR("Error before: [%s]", cJSON_GetErrorPtr());
         goto err;
     }
 
-    mudmgr_server = GETSTR_JSONOBJ(json, "MUDManagerAPIProtocol");
+    mudmgr_server = GETSTR_JSONOBJ(config_json, "MUDManagerAPIProtocol");
     if (mudmgr_server == NULL) { 
         mudmgr_server = "http";
     }
-    mudmgr_coa_pw = GETSTR_JSONOBJ(json,"COA_Password");
-    mudmgr_cert = GETSTR_JSONOBJ(json,"MUDManager_cert");
-    mudmgr_key = GETSTR_JSONOBJ(json,"MUDManager_key");
-    mudmgr_CAcert = GETSTR_JSONOBJ(json,"Enterprise_CACert");
-    acl_list_prefix = GETSTR_JSONOBJ(json, "ACL_Prefix");
-    acl_list_type_str = GETSTR_JSONOBJ(json, "ACL_Type");
+    mudmgr_coa_pw = GETSTR_JSONOBJ(config_json,"COA_Password");
+    mudmgr_cert = GETSTR_JSONOBJ(config_json,"MUDManager_cert");
+    mudmgr_key = GETSTR_JSONOBJ(config_json,"MUDManager_key");
+    mudmgr_CAcert = GETSTR_JSONOBJ(config_json,"Enterprise_CACert");
+    acl_list_prefix = GETSTR_JSONOBJ(config_json, "ACL_Prefix");
+    acl_list_type_str = GETSTR_JSONOBJ(config_json, "ACL_Type");
     if ((acl_list_type_str != NULL) && !strcmp(acl_list_type_str, "dACL-ingress-only")) {
         acl_list_type = INGRESS_ONLY_ACL;
     }
 
     //MUDC_LOG_INFO("MUDCTRL CA Cert <%s> MUDCTRL Cert <%s> MUDCTRL Key <%s>", mudmgr_CAcert, mudmgr_cert, mudmgr_key);
-    {   // moved if (!json) test earlier; skip moving below lines for now...
-        manuf_json = cJSON_GetObjectItem(json, "Manufacturers");
+    {   // moved if (!config_json) test earlier; skip moving below lines for now...
+        manuf_json = cJSON_GetObjectItem(config_json, "Manufacturers");
         if (manuf_json == NULL) {
             MUDC_LOG_ERR("Error before: [%s]", cJSON_GetErrorPtr());
             goto err;
@@ -294,7 +335,7 @@ static int read_mudmgr_config (char* filename)
         }
 
         MUDC_LOG_INFO("Certificate read ok:  Continue reading domain list");
-        dnsmap_json = cJSON_GetObjectItem(json, "DNSMapping");
+        dnsmap_json = cJSON_GetObjectItem(config_json, "DNSMapping");
         if (dnsmap_json == NULL) {
             MUDC_LOG_ERR("Error before: [%s]", cJSON_GetErrorPtr());
             goto err;
@@ -302,52 +343,52 @@ static int read_mudmgr_config (char* filename)
             MUDC_LOG_INFO("JSON is read succesfully");
         } 
 
-        dnsmap_v6_json = cJSON_GetObjectItem(json, "DNSMapping_v6");
+        dnsmap_v6_json = cJSON_GetObjectItem(config_json, "DNSMapping_v6");
         if (dnsmap_v6_json == NULL) {
             MUDC_LOG_INFO("No IPv6 Mapping: [%s]", cJSON_GetErrorPtr());
         }
 
-        ctrlmap_json = cJSON_GetObjectItem(json, "ControllerMapping");
+        ctrlmap_json = cJSON_GetObjectItem(config_json, "ControllerMapping");
         if (ctrlmap_json == NULL) {
             MUDC_LOG_ERR("Error before: [%s]", cJSON_GetErrorPtr());
             goto err;
         } else {
             MUDC_LOG_INFO("JSON is read succesfully");
         } 
-        ctrlmap_v6_json = cJSON_GetObjectItem(json, "ControllerMapping_v6");
+        ctrlmap_v6_json = cJSON_GetObjectItem(config_json, "ControllerMapping_v6");
         if (ctrlmap_v6_json == NULL) {
             MUDC_LOG_INFO("No IPv6 Mapping: [%s]", cJSON_GetErrorPtr());
         }
-        defacl_json = cJSON_GetObjectItem(json, "DefaultACL");
+        defacl_json = cJSON_GetObjectItem(config_json, "DefaultACL");
         if (defacl_json == NULL) {
             MUDC_LOG_INFO("No Default ACL configured");
         }
-        defacl_v6_json = cJSON_GetObjectItem(json, "DefaultACL_v6");
+        defacl_v6_json = cJSON_GetObjectItem(config_json, "DefaultACL_v6");
         if (defacl_v6_json == NULL) {
             MUDC_LOG_INFO("No Default ACL configured");
         }
 
-        mongoDb_name = GETSTR_JSONOBJ(json, "MongoDB_Name");
+        mongoDb_name = GETSTR_JSONOBJ(config_json, "MongoDB_Name");
         if (mongoDb_name == NULL) {
             mongoDb_name = strdup(default_dbname);
         }
 
-        mongoDb_uristr = GETSTR_JSONOBJ(json, "MongoDB_URI");
+        mongoDb_uristr = GETSTR_JSONOBJ(config_json, "MongoDB_URI");
         if (mongoDb_uristr == NULL) {
             mongoDb_uristr = strdup(default_uri);
         }
 
-        mongoDb_policies_collection = GETSTR_JSONOBJ(json, "MongoDB_Collection");
+        mongoDb_policies_collection = GETSTR_JSONOBJ(config_json, "MongoDB_Collection");
         if (mongoDb_policies_collection == NULL) {
             mongoDb_policies_collection = strdup(default_policies_coll_name);
         }
 
-        mongoDb_mudfile_coll = GETSTR_JSONOBJ(json, "MongoDB_MUDFile_Collection");
+        mongoDb_mudfile_coll = GETSTR_JSONOBJ(config_json, "MongoDB_MUDFile_Collection");
         if (mongoDb_mudfile_coll == NULL) {
             mongoDb_mudfile_coll = strdup(default_mudfile_coll_name);
         }
         
-	mongoDb_macaddr_coll = GETSTR_JSONOBJ(json, "MongoDB_MACADDR_Collection");
+	mongoDb_macaddr_coll = GETSTR_JSONOBJ(config_json, "MongoDB_MACADDR_Collection");
         if (mongoDb_macaddr_coll == NULL) {
             mongoDb_macaddr_coll = strdup(default_macaddr_coll_name);
         }
@@ -1319,10 +1360,9 @@ static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, boo
         response_len = strlen(response_str);
         MUDC_LOG_INFO("Response <%s>\n", response_str);
 
-        mg_send_head(nc, ret, response_len, reply_type);
-        mg_printf(nc, "%.*s", response_len, response_str);
+        mudc_construct_head(nc, ret, response_len, reply_type);
+        MUDC_WRITE_DATA(nc, "%.*s", response_len, response_str);
         free(response_str);
-        nc->flags |= MG_F_SEND_AND_CLOSE;
     } else if (query_only) {
         goto end;
     } else if (found_uri) {
@@ -1332,9 +1372,8 @@ static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, boo
         reply_type = "Content-Type: application/aclname";
         response_str = "{\"MSG\":\"No ACL for this MUD URL\"}";
         response_len = strlen(response_str);
-        mg_send_head(nc, ret, response_len, reply_type);
-        mg_printf(nc, "%.*s", response_len, response_str);
-        nc->flags |= MG_F_SEND_AND_CLOSE;
+        mudc_construct_head(nc, ret, response_len, reply_type);
+        MUDC_WRITE_DATA(nc, "%.*s", response_len, response_str);
     }
 
 end:
@@ -1627,9 +1666,8 @@ void send_masauri_response(struct mg_connection *nc, cJSON *response_json)
     response_str = cJSON_Print(response_json);
     response_len = strlen(response_str);
     MUDC_LOG_INFO("Response <%s>\n", response_str);
-    mg_send_head(nc, 200, response_len, "Content-Type: application/masauri");
-    mg_printf(nc, "%.*s", response_len, response_str);
-    nc->flags |= MG_F_SEND_AND_CLOSE;
+    mudc_construct_head(nc, 200, response_len, "Content-Type: application/masauri");
+    MUDC_WRITE_DATA(nc, "%.*s", response_len, response_str);
     free(response_str);
 }
 
@@ -1662,14 +1700,13 @@ void send_response(struct mg_connection *nc, cJSON *parsed_json)
     response_str = cJSON_Print(response_json);
     response_len = strlen(response_str);
     MUDC_LOG_INFO("Response <%s> <%d>\n", response_str, response_len);
-    mg_send_head(nc, 200, response_len, "Content-Type: application/aclname");
-    mg_printf(nc, "%s", response_str);
+    mudc_construct_head(nc, 200, response_len, "Content-Type: application/aclname");
+    MUDC_WRITE_DATA(nc, "%s", response_str);
 
     if (response_str) {
         free(response_str);
     }
     cJSON_Delete(response_json);
-    nc->flags |= MG_F_SEND_AND_CLOSE;
 }
 
 /*
@@ -1798,7 +1835,13 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     /*
      * Setup session to the MUD FS
      */
+MUDC_LOG_ERR("CURL_EASY_INIT");
     curl = curl_easy_init();
+    if (curl == NULL) {
+        MUDC_LOG_ERR("Error in connecting to FS");
+ 	send_error_for_context(ctx, 404, "error from FS\n");
+        goto err;
+    }
     
     memset(requri, 0, sizeof(requri));
     memset(tmp_uri, 0, sizeof(tmp_uri));
@@ -1825,12 +1868,13 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     } else {
         MUDC_LOG_ERR("invalid flag");
  	send_error_for_context(ctx, 500, "internal error\n");
-        return;
+        goto err;
     }
 
     manuf_idx = find_manufacturer(requri);
     if (manuf_idx == -1) {
         MUDC_LOG_ERR("Manufacturer not found: URI %s\n", requri);
+ 	send_error_for_context(ctx, 500, "internal error\n");
         goto err;
     }
 
@@ -1849,6 +1893,11 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
 
     response = fetch_file(curl, requri, &response_len, "mud+json",
 	    		  manuf_list[manuf_idx].certfile);
+    if (response == NULL) {
+        MUDC_LOG_ERR("Unable to reach MUD fileserver");
+ 	send_error_for_context(ctx, 404, "error from FS\n");
+        goto err;
+    }
 
     /* Check return */
     printf("MUD file: %s\n", response);
@@ -1868,11 +1917,10 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     if (!found) {
     	MUDC_LOG_ERR("Failed to strip off MIME header");
         send_error_for_context(ctx, 500, "error from FS\n");
-        free_request_context(ctx);
-        return;
+        goto err;
     }
     ctx->orig_mud_len = response_len - i;
-    ctx->orig_mud = calloc(ctx->orig_mud_len, sizeof(char));
+    ctx->orig_mud = calloc(ctx->orig_mud_len+1, sizeof(char));
     memcpy(ctx->orig_mud, response + i, ctx->orig_mud_len);
 
     /* 
@@ -1882,7 +1930,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
 	    || strlen(requri) == 0) {
 	MUDC_LOG_ERR("Unable to request signature file");
  	send_error_for_context(ctx, 500, "error from FS\n");
-        return;
+        goto err;
     }
    
     /*
@@ -1890,6 +1938,11 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
      */
     response = fetch_file(curl, requri, &response_len, "pkcs7-signed",
 	    		  manuf_list[manuf_idx].certfile);
+    if (response == NULL) {
+        MUDC_LOG_ERR("Unable to reach MUD fileserver");
+ 	send_error_for_context(ctx, 404, "error from FS\n");
+        goto err;
+    }
   
     found = false;
     /*
@@ -1907,8 +1960,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     if (!found) {
     	MUDC_LOG_ERR("Failed to strip off MIME header");
         send_error_for_context(ctx, 500, "error from FS\n");
-        free_request_context(ctx);
-        return;
+        goto err;
     }
     ctx->signed_mud_len = response_len - i;
     ctx->signed_mud = calloc(ctx->signed_mud_len, sizeof(char));
@@ -1920,7 +1972,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     if (ret == -1) {
     	MUDC_LOG_INFO("Verification failed. Manufacturer Index <%d>\n", ret);
         send_error_for_context(ctx, 500, "verification failed\n");
-	return;
+        goto err;
     }
 
     if (flag == 2) {
@@ -1986,34 +2038,94 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
  jump:
         cJSON_Delete(parsed_json);
     }
+    if (curl) {
+MUDC_LOG_ERR("CURL_EASY_CLEANUP");
+        curl_easy_cleanup(curl);
+    }
     return;
 
 err:
     MUDC_LOG_ERR("mudfs_conn failed\n");
-    send_error_for_context(ctx, 404, "mudfs connection failed\n");
+    if (curl) {
+MUDC_LOG_ERR("CURL_EASY_CLEANUP");
+        curl_easy_cleanup(curl);
+    }
     free_request_context(ctx);
     return;
 }
 
+static cJSON *get_request_json(struct mg_connection *nc)
+{
+    cJSON *request_json=NULL;
+    char buf[255+1];
+    const struct mg_request_info *ri = NULL;
+    int err_status = 500; // default: internal error
+    char *response_str = NULL;
+
+    if (nc == NULL) {
+        MUDC_LOG_ERR("invalid parameters\n");
+        return NULL;
+    }
+
+    ri = mg_get_request_info(nc);
+    if (ri == NULL) {
+        response_str = "invalid message";
+        MUDC_LOG_ERR("%s", response_str);
+        err_status = 403;
+        goto send_error;
+    }
+
+    if (strcmp(ri->request_method, "GET")) {
+        response_str = "Invalid request method: must be GET";
+        MUDC_LOG_ERR("%s", response_str);
+        err_status = 403;
+        goto send_error;
+    }
+
+    memset(buf, 0, sizeof(buf)); // make valgrind happy
+
+    mg_read(nc, buf, sizeof(buf)-1);
+
+    request_json = cJSON_Parse(buf);
+    if (request_json == NULL) {
+        response_str = "invalid message";
+        MUDC_LOG_ERR("%s", response_str);
+        err_status = 403;
+        goto send_error;
+    }
+    return request_json;
+
+send_error:
+    // send error message -- decide on error statuses
+    send_error_result(nc, err_status, response_str);
+    return NULL;
+}
+
+
 /*
  * This code responds to a REST API of /getaclpolicy.
  */
-static void handle_get_acl_policy(struct mg_connection *nc, 
-				  struct http_message *hm) 
+static int handle_get_acl_policy(struct mg_connection *nc, 
+                       void *unused __attribute__((unused)))
 {
     cJSON *jsonResponse=NULL, *dacl_req=NULL;
     int response_len=0;
     char *acl_name=NULL,  *response_str=NULL;
 
-    if (nc == NULL || hm == NULL || strlen(hm->body.p) == 0) {
+    if (nc == NULL) {
         MUDC_LOG_ERR("invalid parameters\n");
-        return;
+        return 1;
     }
 
     /*
      * Find the ACLs with the requested name.
      */
-    dacl_req = cJSON_Parse((char*)hm->body.p);
+    dacl_req = get_request_json(nc);
+    if (dacl_req == NULL) {
+        MUDC_LOG_INFO("unable to decode message");
+        send_error_result(nc, 500, "bad input");
+        return 1; 
+    }
     acl_name = GETSTR_JSONOBJ(dacl_req, "ACL_NAME");
     jsonResponse = get_policy_by_aclname(acl_type, acl_name);
     if (jsonResponse == NULL) {
@@ -2024,16 +2136,18 @@ static void handle_get_acl_policy(struct mg_connection *nc,
     response_str = cJSON_Print(jsonResponse);
     MUDC_LOG_INFO("\nResponse: %s\n", response_str);
     response_len = strlen(response_str);
-    mg_send_head(nc, 200, response_len, "Content-Type: application/dacl");
-    mg_printf(nc, "%.*s", response_len, response_str);
-    nc->flags |= MG_F_SEND_AND_CLOSE;
+    mudc_construct_head(nc, 200, response_len, "Content-Type: application/dacl");
+    MUDC_WRITE_DATA(nc, "%.*s", response_len, response_str);
     free(response_str);
 err:
     cJSON_Delete(jsonResponse);
     cJSON_Delete(dacl_req);
+
+    return 1;
 }
 
-static void handle_coa_alert(struct mg_connection *nc, struct http_message *hm) 
+static int handle_coa_alert(struct mg_connection *nc, 
+                       void *unused __attribute__((unused)))
 {
     char *mac=NULL;
     char coa_command[255];
@@ -2043,17 +2157,17 @@ static void handle_coa_alert(struct mg_connection *nc, struct http_message *hm)
 
     MUDC_LOG_INFO("Received COA Alert\n");
     
-    if (nc == NULL || hm == NULL || strlen(hm->body.p) == 0) {
+    if (nc == NULL) {
         MUDC_LOG_ERR("invalid parameters\n");
-        return;
+        return 1;
     }
 
-
-    request_json = cJSON_Parse((char*)hm->body.p);
+    //request_json = cJSON_Parse((char*)hm->body.p);
+    request_json = get_request_json(nc);
     if (request_json == NULL) {
         MUDC_LOG_ERR("unable to parse message");
         send_error_result(nc, 500, "bad input");
-        return;
+        return 1;
     }
 
     mac = GETSTR_JSONOBJ(request_json, "MAC_ADDR"); 
@@ -2061,14 +2175,14 @@ static void handle_coa_alert(struct mg_connection *nc, struct http_message *hm)
         MUDC_LOG_ERR("bad input");
         send_error_result(nc, 500, "bad input");
         cJSON_Delete(request_json);
-	return;
+	return 1;
     }
 
     if (mac[0] == '\0') {
         MUDC_LOG_ERR("bad input");
         send_error_result(nc, 500, "bad input");
         cJSON_Delete(request_json);
-	return;
+	return 1;
     } else {
     	MUDC_LOG_INFO("Attempting to initiate CoA Alert for MAC Address: <%s>\n", mac);
         sess = find_session(mac);    
@@ -2094,10 +2208,10 @@ static void handle_coa_alert(struct mg_connection *nc, struct http_message *hm)
             MUDC_LOG_INFO("sysret: %d", sysret);
 	    remove_session(mac);
         }
-	mg_send_response_line(nc, 200, "Content-Type: application/alertcoa");
-    	nc->flags |= MG_F_SEND_AND_CLOSE;
+	mudc_construct_head(nc, 200, 0, "Content-Type: application/alertcoa");
     }
     cJSON_Delete(request_json);
+    return 1;
 }
 
 static bool validate_muduri (struct mg_connection *nc, char *uri) 
@@ -2158,20 +2272,26 @@ MUDC_LOG_INFO("ip: %s, filename: %s", ip, filename);
  * NOTE: This function should check the mudfile collecton for the MUD file
  *       before fetching it from the MUD file server.
  */
-static void handle_get_masa_uri(struct mg_connection *nc, struct http_message *hm) 
+static int handle_get_masa_uri(struct mg_connection *nc, 
+                       void *unused __attribute__((unused)))
 {
     char *uri=NULL;
     cJSON *request_json=NULL;
     char requri[255];
 
-    if (nc == NULL || hm == NULL || strlen(hm->body.p) == 0) {
+    if (nc == NULL) {
         MUDC_LOG_ERR("handle_get_masa_uri: invalid parameters\n");
-        return;
+        return 1;
     }
 
     memset(requri, 0, sizeof(requri)); // make valgrind happy
 
-    request_json = cJSON_Parse((char*)hm->body.p);
+    request_json = get_request_json(nc);
+    if (request_json == NULL) {
+        MUDC_LOG_INFO("unable to decode message");
+        send_error_result(nc, 500, "bad input");
+        return 1; 
+    }
     uri = GETSTR_JSONOBJ(request_json, "MUD_URI"); 
 
     if (validate_muduri(nc, uri) == false) {
@@ -2182,6 +2302,7 @@ static void handle_get_masa_uri(struct mg_connection *nc, struct http_message *h
         send_mudfs_request(nc, uri, requri, NULL, NULL, NULL, 2, true);
     }
     cJSON_Delete(request_json);
+    return 1;
 }
 
 /*
@@ -2205,7 +2326,8 @@ static void handle_get_masa_uri(struct mg_connection *nc, struct http_message *h
  * Other args includes the Session ID and NAS. These are used in case
  *   a COA is needed.
  */
-static void handle_get_aclname(struct mg_connection *nc, struct http_message *hm) 
+static int handle_get_aclname(struct mg_connection *nc, 
+                       void *unused __attribute__((unused)))
 {
     char *uri=NULL, *mac_addr=NULL, *nas=NULL, *session_id=NULL;
     cJSON *request_json=NULL;
@@ -2216,17 +2338,16 @@ static void handle_get_aclname(struct mg_connection *nc, struct http_message *hm
     int requri_len= 0;
     bool cache_expired = false;
 
-    if (nc == NULL || hm == NULL || strlen(hm->body.p) == 0) {
+    if (nc == NULL) {
         MUDC_LOG_ERR("invalid parameters");
-        return;
+        return 1;
     }
 
-    MUDC_LOG_INFO("http message: %.*s", hm->body.len, hm->body.p);
-
-    request_json = cJSON_Parse((char*)hm->body.p);
+    request_json = get_request_json(nc);
     if (request_json == NULL) {
         MUDC_LOG_INFO("unable to decode message");
-        return; 
+        send_error_result(nc, 500, "bad input");
+        return 1; 
     }
     uri = GETSTR_JSONOBJ(request_json, "MUD_URI"); 
     mac_addr = GETSTR_JSONOBJ(request_json, "MAC_ADDR");
@@ -2238,7 +2359,7 @@ static void handle_get_aclname(struct mg_connection *nc, struct http_message *hm
      */
     if ((uri == NULL) && (mac_addr == NULL)) {
         send_error_result(nc, 500, "bad input");
-	return;
+	return 1;
     }
 
     /*
@@ -2291,12 +2412,11 @@ static void handle_get_aclname(struct mg_connection *nc, struct http_message *hm
         char *reply_type = "Content-Type: application/aclname";
         char *response_str = "{\"MSG\":\"No ACL for this device MAC Address\"}";
         int response_len = strlen(response_str);
-        mg_send_head(nc, ret, response_len, reply_type);
-        mg_printf(nc, "%.*s", response_len, response_str);
+        mudc_construct_head(nc, ret, response_len, reply_type);
+        MUDC_WRITE_DATA(nc, "%.*s", response_len, response_str);
 
         MUDC_LOG_INFO("No URL found for Mac address <%s> \n", mac_addr);
         MUDC_LOG_INFO("    and no MUD URL was provided.");
-        nc->flags |= MG_F_SEND_AND_CLOSE;
         goto end;
     }
 
@@ -2373,8 +2493,47 @@ end:
 	free(requri);
     }
     cJSON_Delete(request_json);
+
+    return 1;
 }
 
+#if 0 
+
+// Do we want to intercept and reject all other requests? 
+
+static int handle_unknown_request(struct mg_connection *nc,
+                   void *cbdata __attribute__((unused)))
+{
+    // control the response that we're sending back for other messages
+    const struct mg_request_info *ri = NULL;
+
+    BRSKI_LOG_VERBOSE("start");
+
+    if (nc == NULL) {
+        BRSKI_LOG_ERR("invalid parameters");
+        return 0;
+    }
+
+    ri = mg_get_request_info(nc);
+    if (ri == NULL) {
+        MUDC_LOG_ERR("invalid parameters");
+        MUDC_LOG_ERR("Invalid URI");
+        return 1;
+    } else {
+        MUDC_LOG_ERR("Invalid URI: %s", ri->local_uri);
+    }
+
+
+    // 404? 400? something else?
+    MUDC_LOG_INFO("Invalid URI: sending response");
+    mudc_construct_head(nc, 404, 0, "Content-Type: text/plain");
+
+    return 1;
+}
+#endif
+
+
+#if 0
 /* Server handler */
 static void ev_handler(struct mg_connection *nc, int ev, void *ev_data) 
 {
@@ -2411,6 +2570,7 @@ static void ev_handler(struct mg_connection *nc, int ev, void *ev_data)
             break;
     }
 }
+#endif
 
 void initialize_MongoDB() 
 {
@@ -2426,19 +2586,183 @@ void initialize_MongoDB()
     macaddr_collection = mongoc_client_get_collection (client, mongoDb_name, mongoDb_macaddr_coll);
 }
 
+#include "openssl/ssl.h"
+#include "openssl/dh.h"
+#include "openssl/ec.h"
+#include "openssl/evp.h"
+#include "openssl/ecdsa.h"
+
+DH *get_dh2236()
+{
+       static unsigned char dh2236_p[] = {
+           0x0E, 0x97, 0x6E, 0x6A, 0x88, 0x84, 0xD2, 0xD7, 0x55, 0x6A, 0x17, 0xB7,
+           0x81, 0x9A, 0x98, 0xBC, 0x7E, 0xD1, 0x6A, 0x44, 0xB1, 0x18, 0xE6, 0x25,
+           0x3A, 0x62, 0x35, 0xF0, 0x41, 0x91, 0xE2, 0x16, 0x43, 0x9D, 0x8F, 0x7D,
+           0x5D, 0xDA, 0x85, 0x47, 0x25, 0xC4, 0xBA, 0x68, 0x0A, 0x87, 0xDC, 0x2C,
+           0x33, 0xF9, 0x75, 0x65, 0x17, 0xCB, 0x8B, 0x80, 0xFE, 0xE0, 0xA8, 0xAF,
+           0xC7, 0x9E, 0x82, 0xBE, 0x6F, 0x1F, 0x00, 0x04, 0xBD, 0x69, 0x50, 0x8D,
+           0x9C, 0x3C, 0x41, 0x69, 0x21, 0x4E, 0x86, 0xC8, 0x2B, 0xCC, 0x07, 0x4D,
+           0xCF, 0xE4, 0xA2, 0x90, 0x8F, 0x66, 0xA9, 0xEF, 0xF7, 0xFC, 0x6F, 0x5F,
+           0x06, 0x22, 0x00, 0xCB, 0xCB, 0xC3, 0x98, 0x3F, 0x06, 0xB9, 0xEC, 0x48,
+           0x3B, 0x70, 0x6E, 0x94, 0xE9, 0x16, 0xE1, 0xB7, 0x63, 0x2E, 0xAB, 0xB2,
+           0xF3, 0x84, 0xB5, 0x3D, 0xD7, 0x74, 0xF1, 0x6A, 0xD1, 0xEF, 0xE8, 0x04,
+           0x18, 0x76, 0xD2, 0xD6, 0xB0, 0xB7, 0x71, 0xB6, 0x12, 0x8F, 0xD1, 0x33,
+           0xAB, 0x49, 0xAB, 0x09, 0x97, 0x35, 0x9D, 0x4B, 0xBB, 0x54, 0x22, 0x6E,
+           0x1A, 0x33, 0x18, 0x02, 0x8A, 0xF4, 0x7C, 0x0A, 0xCE, 0x89, 0x75, 0x2D,
+           0x10, 0x68, 0x25, 0xA9, 0x6E, 0xCD, 0x97, 0x49, 0xED, 0xAE, 0xE6, 0xA7,
+           0xB0, 0x07, 0x26, 0x25, 0x60, 0x15, 0x2B, 0x65, 0x88, 0x17, 0xF2, 0x5D,
+           0x2C, 0xF6, 0x2A, 0x7A, 0x8C, 0xAD, 0xB6, 0x0A, 0xA2, 0x57, 0xB0, 0xC1,
+           0x0E, 0x5C, 0xA8, 0xA1, 0x96, 0x58, 0x9A, 0x2B, 0xD4, 0xC0, 0x8A, 0xCF,
+           0x91, 0x25, 0x94, 0xB4, 0x14, 0xA7, 0xE4, 0xE2, 0x1B, 0x64, 0x5F, 0xD2,
+           0xCA, 0x70, 0x46, 0xD0, 0x2C, 0x95, 0x6B, 0x9A, 0xFB, 0x83, 0xF9, 0x76,
+           0xE6, 0xD4, 0xA4, 0xA1, 0x2B, 0x2F, 0xF5, 0x1D, 0xE4, 0x06, 0xAF, 0x7D,
+           0x22, 0xF3, 0x04, 0x30, 0x2E, 0x4C, 0x64, 0x12, 0x5B, 0xB0, 0x55, 0x3E,
+           0xC0, 0x5E, 0x56, 0xCB, 0x99, 0xBC, 0xA8, 0xD9, 0x23, 0xF5, 0x57, 0x40,
+           0xF0, 0x52, 0x85, 0x9B,
+       };
+       static unsigned char dh2236_g[] = {
+           0x02,
+       };
+       DH *dh;
+
+       if ((dh = DH_new()) == NULL)
+               return (NULL);
+       dh->p = BN_bin2bn(dh2236_p, sizeof(dh2236_p), NULL);
+       dh->g = BN_bin2bn(dh2236_g, sizeof(dh2236_g), NULL);
+       if ((dh->p == NULL) || (dh->g == NULL)) {
+               DH_free(dh);
+               return (NULL);
+       }
+       return (dh);
+}
+
+static int init_ssl(void *ssl_context, 
+                     void *user_data __attribute__((unused)))
+{
+    // A return code of -1 will cause the SSL server conn. (e.g. mg_start)
+    // to fail
+
+
+    //if (!ssl_context || !user_data) {
+    if (!ssl_context) {
+        MUDC_LOG_ERR("Invalid parameters");
+        return -1;
+    }
+
+
+    /* Add application specific SSL initialization */
+    struct ssl_ctx_st *ctx = (struct ssl_ctx_st *)ssl_context;
+
+#if 0
+    // save for later use (we may need to override some settings)
+    struct server_context *server = (struct server_context *)user_data;
+    server->ssl_ctx = ctx;
+#endif
+
+
+    /* example from https://github.com/civetweb/civetweb/issues/347 */
+    DH *dh = get_dh2236();
+    if (!dh) {
+        MUDC_LOG_ERR("DH init failed");
+        ERR_print_errors_fp(stderr);
+        return -1;
+    }
+    if (1 != SSL_CTX_set_tmp_dh(ctx, dh)) {
+        MUDC_LOG_ERR("DH init failed");
+        ERR_print_errors_fp(stderr);
+        return -1;
+    }
+    DH_free(dh);
+
+    EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+    if (!ecdh) {
+        MUDC_LOG_ERR("DH init failed");
+        ERR_print_errors_fp(stderr);
+        return -1;
+    }
+    if (1 != SSL_CTX_set_tmp_ecdh(ctx, ecdh)) {
+        MUDC_LOG_ERR("DH init failed");
+        ERR_print_errors_fp(stderr);
+        return -1;
+    }
+    EC_KEY_free(ecdh);
+    MUDC_LOG_INFO("ECDH ciphers initialized");
+    return 0;
+}
+
+
+static void set_options_and_callback(bool use_security, const char *certfile,
+                                     const char *cacertfile)
+{
+    struct mg_callbacks callbacks;
+    memset(&callbacks, 0, sizeof(callbacks));
+
+    if (use_security == true) {
+        const char *options[] = {
+             "listening_ports", s_https_port,
+             "ssl_certificate", certfile,
+             "ssl_ca_file", cacertfile,
+             "ssl_protocol_version", "3", // allow tlsv1.1&v1.2, disallow sslv2&v3
+             "ssl_cipher_list", "ALL:!aNULL:!eNULL:!SSLv2:!EXPORT:!SRP",
+             "ssl_verify_peer", "no",
+             //"error_log_file", "error.log",
+             "decode_url", "yes",
+             "request_timeout_ms", "10000",
+             0};
+	callbacks.init_ssl = init_ssl;
+        mg_server_ctx = mg_start(&callbacks, NULL, options);
+    } else {
+        const char *options[] = {
+             "listening_ports", s_http_port,
+             //"error_log_file", "error.log",
+             "decode_url", "yes",
+             "request_timeout_ms", "10000",
+             0};
+        mg_server_ctx = mg_start(&callbacks, NULL, options);
+    }
+}
+
+static void mud_manager_cleanup(void)
+{
+    if (mg_server_ctx != NULL) {
+        mg_stop(mg_server_ctx);
+    }
+    if (policies_collection != NULL) {
+        mongoc_collection_destroy(policies_collection);
+    }
+    if (mudfile_collection != NULL) {
+        mongoc_collection_destroy(mudfile_collection);
+    }
+    if (macaddr_collection != NULL) {
+        mongoc_collection_destroy(macaddr_collection);
+    }
+    if (client != NULL) {
+        mongoc_client_destroy(client);
+    }
+    mongoc_cleanup();
+    cJSON_Delete(config_json);
+}
+
+void sigintHandler(int sig_num)
+{
+    MUDC_LOG_ERR("CTRL-C/%d received; shutting down program", sig_num);
+
+    mud_manager_cleanup();
+
+    exit(1);
+}
+
 
 int main(int argc, char *argv[]) 
 {
-    struct mg_mgr mgr;
-    struct mg_connection *nc=NULL;
-    struct mg_bind_opts bind_opts;
+    //struct mg_connection *nc=NULL;
     int i=0;
-    char *cp=NULL,*port=NULL;
+    char *port=NULL;
     int opt;
     char *default_config_filename = "/usr/local/etc/mud_manager_conf.json";
     char *config_filename = NULL;
 
-
+    signal(SIGINT, sigintHandler);
     signal(SIGCHLD, SIG_IGN);
 
     OpenSSL_add_all_algorithms();
@@ -2464,6 +2788,17 @@ int main(int argc, char *argv[])
 	    return 1;
 	}
     }
+    /* Process command line options to customize HTTP server */
+    for (i = 1; i < argc; i++) {
+#if 0
+        if (strcmp(argv[i], "-D") == 0 && i + 1 < argc) {
+            mgr.hexdump_file = argv[++i];
+        } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
+#endif
+        if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
+            s_http_port = argv[++i];
+        }
+    }
 
     if (config_filename == NULL) {
 	config_filename = default_config_filename;
@@ -2473,61 +2808,54 @@ int main(int argc, char *argv[])
         MUDC_LOG_ERR("Error reading config file\n");
         return 1;
     }
-    mg_mgr_init(&mgr, NULL);
 
     if (strcmp(mudmgr_server, "https") == 0 ) {
         MUDC_LOG_INFO("Cert %s, %s,  %s\n", mudmgr_cert, mudmgr_key, mudmgr_CAcert);
-        memset (&bind_opts, 0, sizeof(bind_opts));
-
-        bind_opts.ssl_cert = mudmgr_cert;
-        bind_opts.ssl_key = mudmgr_key;
-        bind_opts.ssl_ca_cert = mudmgr_CAcert;
-        bind_opts.ssl_cipher_suites = "ALL:!aNULL:!eNULL:!SSLv2:!EXPORT:!SRP";
-
-        nc = mg_bind_opt(&mgr, s_https_port, ev_handler, bind_opts);
         port = (char*)s_https_port;
+        set_options_and_callback(true, mudmgr_cert, mudmgr_CAcert);
     } else {
-        nc = mg_bind(&mgr, s_http_port, ev_handler);
         port = (char*)s_http_port;
+	set_options_and_callback(false, NULL, NULL);
     }
 
-    if (!nc) {
+    if (!mg_server_ctx) {
         MUDC_LOG_ERR("Bind failed.\n");
-        return 1;
+	ERR_print_errors_fp(stderr);
+        exit(1);
     }
 
 
-    mg_set_protocol_http_websocket(nc);
-    s_http_server_opts.document_root = ".";
-    s_http_server_opts.enable_directory_listing = "yes";
+    //mg_set_protocol_http_websocket(nc);
+    //s_http_server_opts.document_root = ".";
+    //s_http_server_opts.enable_directory_listing = "yes";
 
     initialize_MongoDB();
 
+#if 0
     /* Use current binary directory as document root */
     if (argc > 0 && ((cp = strrchr(argv[0], '/')) != NULL ||
                (cp = strrchr(argv[0], '/')) != NULL)) {
         *cp = '\0';
         s_http_server_opts.document_root = argv[0];
     }
+#endif
 
-    /* Process command line options to customize HTTP server */
-    for (i = 1; i < argc; i++) {
-        if (strcmp(argv[i], "-D") == 0 && i + 1 < argc) {
-            mgr.hexdump_file = argv[++i];
-        } else if (strcmp(argv[i], "-p") == 0 && i + 1 < argc) {
-            s_http_port = argv[++i];
-        }
-    }
+    mg_set_request_handler(mg_server_ctx, "/getmasauri", handle_get_masa_uri, NULL);
+    mg_set_request_handler(mg_server_ctx, "/getaclname", handle_get_aclname, NULL);
+    mg_set_request_handler(mg_server_ctx, "/getaclpolicy", handle_get_acl_policy, NULL);
+    mg_set_request_handler(mg_server_ctx, "/alertcoa", handle_coa_alert, NULL);
+#if 0
+    // do we want to intercept and reject any other messages?
+    mg_set_request_handler(mg_server_ctx, "*", handle_unknown_request, NULL);
+#endif
 
     MUDC_LOG_INFO("Starting RESTful server on port %s\n", port);
     for (;;) {
-     mg_mgr_poll(&mgr, 1000);
+        //mg_mgr_poll(&mgr, 1000);
+        sleep(1);
     }
-    mg_mgr_free(&mgr);
-    mongoc_collection_destroy (policies_collection);
-    mongoc_collection_destroy (mudfile_collection);
-    mongoc_collection_destroy (macaddr_collection);
-    mongoc_client_destroy (client);
-    mongoc_cleanup ();
+
+    mud_manager_cleanup();
     return 0;
 }
+
