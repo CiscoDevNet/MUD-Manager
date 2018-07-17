@@ -2054,6 +2054,30 @@ MUDC_LOG_ERR("CURL_EASY_CLEANUP");
     return;
 }
 
+static void mudc_print_request_info(const struct mg_request_info *ri)
+{
+    int i;
+
+    MUDC_LOG_INFO("print parsed HTTP request header info");
+    MUDC_LOG_INFO("request method: %s", ri->request_method);
+    MUDC_LOG_INFO("request uri: %s", ri->request_uri);
+    MUDC_LOG_INFO("local uri: %s", ri->local_uri);
+    MUDC_LOG_INFO("http version: %s", ri->http_version);
+    MUDC_LOG_INFO("query string: %s", ri->query_string);
+    MUDC_LOG_INFO("content_length: %d", ri->content_length);
+    MUDC_LOG_INFO("remote ip addr: 0x%x", ri->remote_addr);
+    MUDC_LOG_INFO("remote port: %d", ri->remote_port);
+    MUDC_LOG_INFO("remote_user: %s", ri->remote_user);
+    MUDC_LOG_INFO("is ssl: %d", ri->is_ssl);
+
+    for (i=0; i<ri->num_headers; i++) {
+        MUDC_LOG_INFO("header(%d): name: <%s>, value: <%s>",
+                       i, ri->http_headers[i].name, ri->http_headers[i].value);
+    }
+}
+
+
+
 static cJSON *get_request_json(struct mg_connection *nc)
 {
     cJSON *request_json=NULL;
@@ -2074,6 +2098,7 @@ static cJSON *get_request_json(struct mg_connection *nc)
         err_status = 403;
         goto send_error;
     }
+    mudc_print_request_info(ri);
 
     if (strcmp(ri->request_method, "GET")) {
         response_str = "Invalid request method: must be GET";
@@ -2123,7 +2148,7 @@ static int handle_get_acl_policy(struct mg_connection *nc,
     dacl_req = get_request_json(nc);
     if (dacl_req == NULL) {
         MUDC_LOG_INFO("unable to decode message");
-        send_error_result(nc, 500, "bad input");
+        // above function already sends specific error messages
         return 1; 
     }
     acl_name = GETSTR_JSONOBJ(dacl_req, "ACL_NAME");
