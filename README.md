@@ -52,18 +52,12 @@ Libcurl is used to fetch MUD files from a MUD file server.
 
     sudo apt-get install libcurl4-openssl-dev
  
-### Mongoose
-You will need the mongoose package, which provides JSON utilities.
- 
-        git clone https://github.com/cesanta/mongoose
-
-You do NOT need to directly make anything in this package - it will be referenced from the MUD manager during the make process.
 
 ## Building the MUD Manager
 
-Run configure and make. The location of the mongoose pakage needs to be provided. In this example, we assume mongoose was unzipped on the system one directory level up from the MUD controller source. 
+Run configure and make. 
  
-        ./configure --with-mongoose=../mongoose
+        ./configure 
         make
         sudo make install
 
