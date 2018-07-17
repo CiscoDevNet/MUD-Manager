@@ -106,11 +106,6 @@ static int num_manu = 0;
 #define GETSTR_JSONARRAY(j,i) cJSON_GetArrayItem(defacl_json, i)->valuestring
 #define GETINT_JSONOBJ(j,v) cJSON_GetObjectItem(j,v) ? cJSON_GetObjectItem(j, v)->valueint: 0
 
-void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
-                               const char *requested_uri, const char* mac_addr, 
-                               const char* nas, const char* sess_id, int flag,
-                               bool send_client_response);
-
 
 static bool mudc_construct_head(struct mg_connection *nc, int status_code,
                                 int content_len, const char *extra_headers)
@@ -136,6 +131,7 @@ status_code, content_len, extra_headers);
     sprintf(&buf[strlen(buf)], "\r\n");
     MUDC_LOG_INFO("HTTP header: %s", buf);
     mg_printf(nc, "%s", buf);
+    free(buf);
 
     return true;
 }
@@ -1769,9 +1765,15 @@ static void free_request_context (request_context *ctx)
     free(ctx);
 }
 
-void attempt_coa(sessions_info *sess)
+static void attempt_coa(sessions_info *sess)
 {
     char coa_command[1024];
+ 
+    memset(coa_command, 0, sizeof(coa_command));
+    if (sess == NULL) {
+        MUDC_LOG_ERR("Invalid parameters");
+        return;
+    }
 
     MUDC_LOG_INFO("Checking if COA is required\n");
     if (sess->mac_addr != NULL && strcmp(sess->mac_addr, "NA")) {
@@ -1819,10 +1821,10 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     int manuf_idx=0;
     request_context *ctx=NULL;
     char requri[255], tmp_uri[255];
-    CURL *curl;
-    char *response;
+    CURL *curl=NULL;
+    char *response=NULL;
     int response_len = 0;
-    int i;
+    int i=0;
     bool found=false;
     int ret=0;
     cJSON *parsed_json=NULL, *masa_json=NULL;
@@ -1835,7 +1837,6 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     /*
      * Setup session to the MUD FS
      */
-MUDC_LOG_ERR("CURL_EASY_INIT");
     curl = curl_easy_init();
     if (curl == NULL) {
         MUDC_LOG_ERR("Error in connecting to FS");
@@ -1900,7 +1901,7 @@ MUDC_LOG_ERR("CURL_EASY_INIT");
     }
 
     /* Check return */
-    printf("MUD file: %s\n", response);
+    MUDC_LOG_INFO("MUD file: %s\n", response);
 
     /*
      * Remove MIME headers.
@@ -1922,6 +1923,8 @@ MUDC_LOG_ERR("CURL_EASY_INIT");
     ctx->orig_mud_len = response_len - i;
     ctx->orig_mud = calloc(ctx->orig_mud_len+1, sizeof(char));
     memcpy(ctx->orig_mud, response + i, ctx->orig_mud_len);
+    free(response);
+    response = NULL;
 
     /* 
      * Determine the signature file URL.
@@ -1938,12 +1941,14 @@ MUDC_LOG_ERR("CURL_EASY_INIT");
      */
     response = fetch_file(curl, requri, &response_len, "pkcs7-signed",
 	    		  manuf_list[manuf_idx].certfile);
+    curl_easy_cleanup(curl);
+    curl = NULL;
     if (response == NULL) {
         MUDC_LOG_ERR("Unable to reach MUD fileserver");
  	send_error_for_context(ctx, 404, "error from FS\n");
         goto err;
     }
-  
+
     found = false;
     /*
      * Remove MIME headers.
@@ -1965,6 +1970,8 @@ MUDC_LOG_ERR("CURL_EASY_INIT");
     ctx->signed_mud_len = response_len - i;
     ctx->signed_mud = calloc(ctx->signed_mud_len, sizeof(char));
     memcpy(ctx->signed_mud, response + i, ctx->signed_mud_len);
+    free(response);
+    response = NULL;
 
     /* Check response */
     ret = verify_mud_content(ctx->signed_mud, ctx->signed_mud_len, 
@@ -2039,18 +2046,23 @@ MUDC_LOG_ERR("CURL_EASY_INIT");
         cJSON_Delete(parsed_json);
     }
     if (curl) {
-MUDC_LOG_ERR("CURL_EASY_CLEANUP");
         curl_easy_cleanup(curl);
+    }
+    free_request_context(ctx);
+    if (response) {
+        free(response);
     }
     return;
 
 err:
     MUDC_LOG_ERR("mudfs_conn failed\n");
     if (curl) {
-MUDC_LOG_ERR("CURL_EASY_CLEANUP");
         curl_easy_cleanup(curl);
     }
     free_request_context(ctx);
+    if (response) {
+        free(response);
+    }
     return;
 }
 

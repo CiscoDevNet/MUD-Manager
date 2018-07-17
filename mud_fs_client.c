@@ -38,7 +38,7 @@ WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
 static size_t validateheaders(void *ptr, size_t size, size_t nmemb, 
 			      void *userdata)
 {
-    int s,r;
+    int s=0,r=0;
     char str[10];
     int code = 0;
     int ret = size * nmemb; /* Return's OK. Any other value with be an error. */
@@ -86,10 +86,15 @@ char *fetch_file(CURL *curl, char *get_url,
 		      int *response_len, char *response_app_string,
 		      char *fs_ca_cert)
 {
-    CURLcode res;
+    CURLcode res = CURLE_OK;
     struct curl_slist *headers = NULL;
     struct MemoryStruct response;
     char exp_response_header[100];
+    char *retbuf=NULL;
+
+    memset(exp_response_header, 0, sizeof(exp_response_header));
+    memset(&response, 0, sizeof(response));
+
 
     sprintf(exp_response_header, "application/%s", response_app_string);
 
@@ -127,6 +132,8 @@ char *fetch_file(CURL *curl, char *get_url,
     if (res != CURLE_OK) {
         fprintf(stderr, "curl_easy_perform() failed: %s\n",
 	                 curl_easy_strerror(res));
+        curl_slist_free_all(headers);
+        free(response.memory);
 	return NULL;
     }
 
@@ -135,6 +142,11 @@ char *fetch_file(CURL *curl, char *get_url,
      * bytes big and contains the result.
      */
     *response_len = response.size;
+    retbuf = calloc(response.size + 1, sizeof(char));
+    memcpy(retbuf, response.memory, response.size);
+    free(response.memory);
+    curl_slist_free_all(headers);
     
-    return response.memory;
+    return retbuf;
 }
+
