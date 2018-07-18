@@ -12,4 +12,4 @@ mud_test_client
 *.o
 civetweb/.dirstamp
 civetweb/.deps/
-
+*.gz
