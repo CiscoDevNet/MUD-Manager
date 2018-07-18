@@ -1,5 +1,7 @@
 bin_PROGRAMS = mud_manager mud_test_client
 
+sysconf_DATA = mud_manager_conf.json
+
 noinst_HEADERS = acl.h log.h sessions.h acl_types.h cisco_dacl.h \
                  mud_fs_client.h
 
@@ -24,8 +26,4 @@ AM_CFLAGS = -DMG_ENABLE_SSL -Wall -W
 # This is temporary. It should be found in configure.ac
 LDADD = -lcurl
 
-install-data-local:
-	if ! test -e ${sysconfdir}/mud_manager_conf.json ; then \
-	    ${INSTALL_DATA} $(srcdir)/mud_manager_conf.json ${sysconfdir}/mud_manager_conf.json; \
-	fi
 
