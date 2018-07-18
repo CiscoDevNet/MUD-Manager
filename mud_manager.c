@@ -146,10 +146,17 @@ static void send_error_result(struct mg_connection *nc, int status, const char *
 {
     int response_len = 0;
 
-    if (nc == NULL || msg == NULL) {
+    if (nc == NULL || (msg == NULL && status != 500)) {
         MUDC_LOG_ERR("invalid parameters");
         return;
     }
+
+    if (status == 500) {
+        // override any supplied text; we don't want to provide 
+        // additional info here
+        msg = "Internal error";
+    }
+
     response_len = strlen(msg);
     mudc_construct_head(nc, status, response_len, NULL);
     MUDC_WRITE_DATA(nc, "%.*s", response_len, msg);
@@ -158,7 +165,7 @@ static void send_error_result(struct mg_connection *nc, int status, const char *
 static void send_error_for_context(request_context *ctx, int status, 
 				   const char *msg)
 {
-    if (ctx == NULL || msg == NULL) {
+    if (ctx == NULL) {
         MUDC_LOG_ERR("invalid parameters");
         return;
     }
@@ -1806,6 +1813,7 @@ static void attempt_coa(sessions_info *sess)
                 MUDC_LOG_INFO("COA command: %s\n", coa_command);
                 int sysret = system(coa_command);
                 MUDC_LOG_INFO("sysret: %d", sysret);
+                // be aware that valgrind will complain of supposed "memory leaks"
 		exit(0);
             }
         }
@@ -1868,14 +1876,14 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
         snprintf(requri, sizeof(requri), "%s", requested_uri);
     } else {
         MUDC_LOG_ERR("invalid flag");
- 	send_error_for_context(ctx, 500, "internal error\n");
+ 	send_error_for_context(ctx, 500, NULL);
         goto err;
     }
 
     manuf_idx = find_manufacturer(requri);
     if (manuf_idx == -1) {
         MUDC_LOG_ERR("Manufacturer not found: URI %s\n", requri);
- 	send_error_for_context(ctx, 500, "internal error\n");
+ 	send_error_for_context(ctx, 500, NULL);
         goto err;
     }
 
@@ -1917,7 +1925,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     }
     if (!found) {
     	MUDC_LOG_ERR("Failed to strip off MIME header");
-        send_error_for_context(ctx, 500, "error from FS\n");
+        send_error_for_context(ctx, 500, NULL);
         goto err;
     }
     ctx->orig_mud_len = response_len - i;
@@ -1932,7 +1940,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     if (!get_mudfs_signed_uri(ctx->orig_mud, ctx->uri, requri, sizeof(requri)) 
 	    || strlen(requri) == 0) {
 	MUDC_LOG_ERR("Unable to request signature file");
- 	send_error_for_context(ctx, 500, "error from FS\n");
+ 	send_error_for_context(ctx, 500, NULL);
         goto err;
     }
    
@@ -1964,7 +1972,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     }
     if (!found) {
     	MUDC_LOG_ERR("Failed to strip off MIME header");
-        send_error_for_context(ctx, 500, "error from FS\n");
+        send_error_for_context(ctx, 500, NULL);
         goto err;
     }
     ctx->signed_mud_len = response_len - i;
@@ -1978,7 +1986,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
 	    		     ctx->orig_mud, ctx->orig_mud_len);
     if (ret == -1) {
     	MUDC_LOG_INFO("Verification failed. Manufacturer Index <%d>\n", ret);
-        send_error_for_context(ctx, 500, "verification failed\n");
+        send_error_for_context(ctx, 401, "Verification failed"); 
         goto err;
     }
 
@@ -1986,7 +1994,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     	masa_json = extract_masa_uri(ctx, (char*)ctx->orig_mud);
         if (masa_json == NULL) {
             MUDC_LOG_ERR("Error in extracting MASA uri");
-            send_error_for_context(ctx, 500, "missing masa uri");
+            send_error_for_context(ctx, 500, NULL);
         } else {
             send_masauri_response(ctx->in, masa_json);
             cJSON_Delete(masa_json);
@@ -1995,7 +2003,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
         parsed_json = parse_mud_content(ctx, ret);
         if (!parsed_json) {
             MUDC_LOG_ERR("Error in parsing MUD file\n");
-            send_error_for_context(ctx, 500, "error from FS\n");
+            send_error_for_context(ctx, 500, NULL);
         } else {
 	    /*
 	     * Update the MAC address and policy datbases with 
@@ -2039,7 +2047,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
 		}
             } else {
                 MUDC_LOG_ERR("Database update failed\n");
-                send_error_for_context(ctx, 500, "internal error\n");
+                send_error_for_context(ctx, 500, NULL);
             }
        }   
  jump:
@@ -2166,7 +2174,7 @@ static int handle_get_acl_policy(struct mg_connection *nc,
     acl_name = GETSTR_JSONOBJ(dacl_req, "ACL_NAME");
     jsonResponse = get_policy_by_aclname(acl_type, acl_name);
     if (jsonResponse == NULL) {
-        send_error_result(nc, 500, "Internal Error");
+        send_error_result(nc, 500, NULL);
         goto err;
     }
 
@@ -2203,21 +2211,21 @@ static int handle_coa_alert(struct mg_connection *nc,
     request_json = get_request_json(nc);
     if (request_json == NULL) {
         MUDC_LOG_ERR("unable to parse message");
-        send_error_result(nc, 500, "bad input");
+        send_error_result(nc, 500, NULL);
         return 1;
     }
 
     mac = GETSTR_JSONOBJ(request_json, "MAC_ADDR"); 
     if (mac == NULL) {
         MUDC_LOG_ERR("bad input");
-        send_error_result(nc, 500, "bad input");
+        send_error_result(nc, 500, NULL);
         cJSON_Delete(request_json);
 	return 1;
     }
 
     if (mac[0] == '\0') {
         MUDC_LOG_ERR("bad input");
-        send_error_result(nc, 500, "bad input");
+        send_error_result(nc, 500, NULL);
         cJSON_Delete(request_json);
 	return 1;
     } else {
@@ -2268,7 +2276,7 @@ MUDC_LOG_INFO("uri: %s", uri);
 
     if ((uri == NULL) || (uri[0] == '\0')) {
         MUDC_LOG_ERR("missing uri");
-        send_error_result(nc, 500, "bad input");
+        send_error_result(nc, 500, NULL);
         return false;
     }
 
@@ -2326,7 +2334,7 @@ static int handle_get_masa_uri(struct mg_connection *nc,
     request_json = get_request_json(nc);
     if (request_json == NULL) {
         MUDC_LOG_INFO("unable to decode message");
-        send_error_result(nc, 500, "bad input");
+        send_error_result(nc, 500, NULL);
         return 1; 
     }
     uri = GETSTR_JSONOBJ(request_json, "MUD_URI"); 
@@ -2383,7 +2391,7 @@ static int handle_get_aclname(struct mg_connection *nc,
     request_json = get_request_json(nc);
     if (request_json == NULL) {
         MUDC_LOG_INFO("unable to decode message");
-        send_error_result(nc, 500, "bad input");
+        send_error_result(nc, 500, NULL);
         return 1; 
     }
     uri = GETSTR_JSONOBJ(request_json, "MUD_URI"); 
@@ -2395,7 +2403,7 @@ static int handle_get_aclname(struct mg_connection *nc,
      * We need one or the other to proceed.
      */
     if ((uri == NULL) && (mac_addr == NULL)) {
-        send_error_result(nc, 500, "bad input");
+        send_error_result(nc, 500, NULL);
 	return 1;
     }
 
@@ -2544,10 +2552,10 @@ static int handle_unknown_request(struct mg_connection *nc,
     // control the response that we're sending back for other messages
     const struct mg_request_info *ri = NULL;
 
-    BRSKI_LOG_VERBOSE("start");
+    MUDC_LOG_VERBOSE("start");
 
     if (nc == NULL) {
-        BRSKI_LOG_ERR("invalid parameters");
+        MUDC_LOG_ERR("invalid parameters");
         return 0;
     }
 
