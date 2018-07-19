@@ -1908,8 +1908,11 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
         goto err;
     }
 
+#if 0
+    /* Enable with a new command line option enabling verbose logging. */
     /* Check return */
     MUDC_LOG_INFO("MUD file: %s\n", response);
+#endif
 
     /*
      * Remove MIME headers.
@@ -2119,13 +2122,6 @@ static cJSON *get_request_json(struct mg_connection *nc)
         goto send_error;
     }
     mudc_print_request_info(ri);
-
-    if (strcmp(ri->request_method, "GET")) {
-        response_str = "Invalid request method: must be GET";
-        MUDC_LOG_ERR("%s", response_str);
-        err_status = 403;
-        goto send_error;
-    }
 
     memset(buf, 0, sizeof(buf)); // make valgrind happy
 
