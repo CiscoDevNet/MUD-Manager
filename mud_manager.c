@@ -36,6 +36,8 @@
 #define SRCPORT 1
 #define DSTPORT 2
 
+#define MAXREQURI 255
+
 static const char *s_http_port = "8000";
 static const char *s_https_port = "8443s";
 static const char *default_dbname = "mud_manager";
@@ -1717,15 +1719,15 @@ void send_response(struct mg_connection *nc, cJSON *parsed_json)
  * pointing to the singature file. If it is not present, then the signature
  * URL is assumed to be the same as the MUD URL, but with a .p7s file type
  * rather than .json.
+ *
+ * The input is uri, and the resulting signature file URL is i requri.
  */
-bool get_mudfs_signed_uri (char *msg, char *uri, char *requri, int requri_len)
+static bool get_mudfs_signed_uri (char *msg, char *uri, char *requri)
 {
     cJSON *json=NULL;
     char *rq=NULL;
 
-    //MUDC_LOG_INFO("\nget_mudfs_signed_uri(%s, %s)\n", msg, uri);
-
-    if (!uri || !msg || !requri || requri_len == 0) {
+    if (!uri || !msg || !requri) {
         MUDC_LOG_ERR("Bad parameters\n");
         return false;
     }
@@ -1738,9 +1740,9 @@ bool get_mudfs_signed_uri (char *msg, char *uri, char *requri, int requri_len)
     
     rq = GETSTR_JSONOBJ(json, "mud-signature");
     if (rq) {
-        snprintf(requri, requri_len, "%s", rq);
+        snprintf(requri, MAXREQURI, "%s", rq);
     } else {
-        snprintf(requri, requri_len, "%s.p7s", uri);
+        snprintf(requri, MAXREQURI, "%s", uri);
     }
     cJSON_Delete(json);
     return true;
@@ -1820,15 +1822,45 @@ static void attempt_coa(sessions_info *sess)
     }
 }
 
+static int create_requri(char *base_uri, char *final_uri, int manuf_idx, 
+		      char *suffix)
+{
+
+    if (manuf_list[manuf_idx].https_port == NULL) {
+	snprintf(final_uri, MAXREQURI, "%s%s", base_uri, suffix);
+    } else {
+        char *tmp = strstr(base_uri, manuf_list[manuf_idx].authority);
+
+	MUDC_LOG_INFO("https_port not NULL");
+
+	/*
+	 * Write the initial portion.
+	 */
+        strncpy(final_uri, base_uri, tmp - base_uri);
+
+	/*
+	 * Write the authority, port, rest of the URI and suffix.
+	 */
+        snprintf(final_uri+(tmp-base_uri), MAXREQURI, "%s:%s%s%s", 
+		 manuf_list[manuf_idx].authority, 
+		 manuf_list[manuf_idx].https_port, 
+		 tmp+strlen(manuf_list[manuf_idx].authority),
+		 suffix);
+
+        MUDC_LOG_INFO("NEW URI <%s> \n", final_uri);
+    }
+
+    return 0;
+}
+
 void send_mudfs_request(struct mg_connection *nc, const char *base_uri, 
-                               const char *requested_uri, 
                                const char* mac_addr, 
                                const char* nas, const char* sess_id, int flag,
                                bool send_client_response) 
 {
     int manuf_idx=0;
     request_context *ctx=NULL;
-    char requri[255], tmp_uri[255];
+    char requri[MAXREQURI], defaulturi[MAXREQURI];
     CURL *curl=NULL;
     char *response=NULL;
     int response_len = 0;
@@ -1848,14 +1880,13 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     curl = curl_easy_init();
     if (curl == NULL) {
         MUDC_LOG_ERR("Error in connecting to FS");
- 	send_error_for_context(ctx, 404, "error from FS\n");
+ 	send_error_for_context(ctx, 404, "Internal error\n");
         goto err;
     }
     
-    memset(requri, 0, sizeof(requri));
-    memset(tmp_uri, 0, sizeof(tmp_uri));
+    memset(requri, 0, sizeof(requri)); // make valgrind happy
 
-    /* Flag=1 (Want ACL policie) */
+    /* Flag=1 (Want ACL policies) */
     /* Flag=2 (Want MASA URI) */
     if (flag == 1 || flag == 2) {
         /*request for json file */
@@ -1873,41 +1904,41 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
         }
         ctx->masaurirequest = (flag == 2) ? 1 : 0;
         ctx->send_client_response = send_client_response;
-        snprintf(requri, sizeof(requri), "%s", requested_uri);
     } else {
         MUDC_LOG_ERR("invalid flag");
  	send_error_for_context(ctx, 500, NULL);
         goto err;
     }
 
-    manuf_idx = find_manufacturer(requri);
+    manuf_idx = find_manufacturer(ctx->uri);
     if (manuf_idx == -1) {
         MUDC_LOG_ERR("Manufacturer not found: URI %s\n", requri);
  	send_error_for_context(ctx, 500, NULL);
         goto err;
     }
 
-    if (manuf_list[manuf_idx].https_port != NULL) {
-        char *tmp = strstr(requri, manuf_list[manuf_idx].authority);
-
-        strncpy(tmp_uri, requri, tmp - requri);
-        tmp_uri[tmp-requri] = '\0';
-
-        sprintf(tmp_uri+(tmp-requri),"%s:%s%s", manuf_list[manuf_idx].authority, manuf_list[manuf_idx].https_port, tmp+strlen(manuf_list[manuf_idx].authority));
-        MUDC_LOG_INFO("NEW URI <%s> \n", tmp_uri);
-        strncpy(requri, tmp_uri, sizeof(requri));
-    }
+    create_requri(ctx->uri, requri, manuf_idx, ".json");
 
     MUDC_LOG_INFO("Request URI <%s> <%s>\n", requri, manuf_list[manuf_idx].certfile);
 
     response = fetch_file(curl, requri, &response_len, "mud+json",
 	    		  manuf_list[manuf_idx].certfile);
+    /*
+     * Use a new session each time for expediency. This is necessary because
+     * if the server is HTTP 1.0, it will close the connection after each
+     * request. A more optimal approach would be for the mud_test_client code
+     * to notice if the server responsed with HTTP 1.0 or not, and reuse
+     * the connection when it's not HTTP 1.0.
+     */
+    curl_easy_cleanup(curl);
+    curl = NULL;
     if (response == NULL) {
-        MUDC_LOG_ERR("Unable to reach MUD fileserver");
+        MUDC_LOG_ERR("Unable to reach MUD fileserver to fetch .json file");
  	send_error_for_context(ctx, 404, "error from FS\n");
         goto err;
     }
 
+    MUDC_LOG_INFO("MUD file successfully retrieved");
 #if 0
     /* Enable with a new command line option enabling verbose logging. */
     /* Check return */
@@ -1938,15 +1969,27 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     response = NULL;
 
     /* 
-     * Determine the signature file URL.
+     * Determine the signature file URL. it's returned in requri.
+     *
+     * Provide the original URI without the .json, in case it has
+     * a port number in it that needs to be retained.
      */
-    if (!get_mudfs_signed_uri(ctx->orig_mud, ctx->uri, requri, sizeof(requri)) 
-	    || strlen(requri) == 0) {
+    memset(defaulturi, 0, sizeof(defaulturi)); // make valgrind happy
+    create_requri(ctx->uri, defaulturi, manuf_idx, ".p7s");
+    if (!get_mudfs_signed_uri(ctx->orig_mud, defaulturi, requri)) {
 	MUDC_LOG_ERR("Unable to request signature file");
  	send_error_for_context(ctx, 500, NULL);
         goto err;
     }
+    MUDC_LOG_INFO("Request signature URI <%s> <%s>\n", requri, 
+	          manuf_list[manuf_idx].certfile);
    
+    curl = curl_easy_init();
+    if (curl == NULL) {
+        MUDC_LOG_ERR("Error in connecting to FS");
+ 	send_error_for_context(ctx, 404, "Internal error\n");
+        goto err;
+    }
     /*
      * Fetch the signature file and verify the signature.
      */
@@ -1955,10 +1998,11 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     curl_easy_cleanup(curl);
     curl = NULL;
     if (response == NULL) {
-        MUDC_LOG_ERR("Unable to reach MUD fileserver");
+        MUDC_LOG_ERR("Unable to reach MUD fileserver to fetch signature file");
  	send_error_for_context(ctx, 404, "error from FS\n");
         goto err;
     }
+    MUDC_LOG_INFO("MUD signature file successfully retrieved");
 
     found = false;
     /*
@@ -2104,7 +2148,7 @@ static void mudc_print_request_info(const struct mg_request_info *ri)
 static cJSON *get_request_json(struct mg_connection *nc)
 {
     cJSON *request_json=NULL;
-    char buf[255+1];
+    char buf[MAXREQURI+1];
     const struct mg_request_info *ri = NULL;
     int err_status = 500; // default: internal error
     char *response_str = NULL;
@@ -2294,7 +2338,7 @@ MUDC_LOG_INFO("uri: %s", uri);
     ip = strtok(b, "/");
     filename = strtok(NULL, "");
 
-MUDC_LOG_INFO("ip: %s, filename: %s", ip, filename);
+    MUDC_LOG_INFO("ip: %s, filename: %s", ip, filename);
 
     if (ip == NULL || strlen(ip) <= 0 || filename == NULL || strlen(filename) <= 0) {
         MUDC_LOG_ERR("invalid uri");
@@ -2318,14 +2362,11 @@ static int handle_get_masa_uri(struct mg_connection *nc,
 {
     char *uri=NULL;
     cJSON *request_json=NULL;
-    char requri[255];
 
     if (nc == NULL) {
         MUDC_LOG_ERR("handle_get_masa_uri: invalid parameters\n");
         return 1;
     }
-
-    memset(requri, 0, sizeof(requri)); // make valgrind happy
 
     request_json = get_request_json(nc);
     if (request_json == NULL) {
@@ -2339,8 +2380,7 @@ static int handle_get_masa_uri(struct mg_connection *nc,
         // function sends error-specific responses
     } else {
     	MUDC_LOG_INFO("Got URI <%s>\n", uri);
-        snprintf(requri, sizeof(requri), "%s.json", uri);
-        send_mudfs_request(nc, uri, requri, NULL, NULL, NULL, 2, true);
+        send_mudfs_request(nc, uri, NULL, NULL, NULL, 2, true);
     }
     cJSON_Delete(request_json);
     return 1;
@@ -2372,11 +2412,9 @@ static int handle_get_aclname(struct mg_connection *nc,
 {
     char *uri=NULL, *mac_addr=NULL, *nas=NULL, *session_id=NULL;
     cJSON *request_json=NULL;
-    char *requri=NULL;
     int foundacls = 0;
     char *found_uri=NULL;
     int can_store_valid_uri = 0;
-    int requri_len= 0;
     bool cache_expired = false;
 
     if (nc == NULL) {
@@ -2519,19 +2557,13 @@ static int handle_get_aclname(struct mg_connection *nc,
      * file server. Allocate room for URI, ".json", and optional 
      * port (":nnnn")
      */
-    requri_len = strlen(uri) + 10;
-    requri = (char *)calloc(1, requri_len);
-    snprintf(requri, requri_len, "%s.json", uri);
-    send_mudfs_request(nc, uri, requri, mac_addr, nas, session_id, 1, 
+    send_mudfs_request(nc, uri, mac_addr, nas, session_id, 1, 
                        cache_expired ? false:true);
 
 err:
 end:
     if (found_uri != NULL) {
         free(found_uri);
-    }
-    if (requri != NULL) {
-	free(requri);
     }
     cJSON_Delete(request_json);
 
