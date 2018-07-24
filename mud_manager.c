@@ -1002,7 +1002,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		    MUDC_LOG_ERR("Got an ipv4 protocol in an ipv6 ACL\n");
 		    goto err;
 		} else {
-		    MUDC_LOG_ERR("Processing an ipv4 protocol\n");
+		    MUDC_LOG_INFO("Processing an ipv4 protocol\n");
 		}
 
 		/* Look for "protocol" (required) */
@@ -1036,7 +1036,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		    MUDC_LOG_ERR("Got an ipv6 protocl in an ipv4 ACL\n");
 		    goto err;
 		} else {
-		    MUDC_LOG_ERR("Processing an ipv6 protocol\n");
+		    MUDC_LOG_INFO("Processing an ipv6 protocol\n");
 		}
 		
 		/* Look for "protocol" (required) */
@@ -1062,7 +1062,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	     */
             acllist[acl_index].ace[ace_index].matches.dir_initiated = -1;
 	    if ((tmp_json=cJSON_GetObjectItem(matches_json, "tcp"))) {
-	        MUDC_LOG_ERR("Processing an tcp protocol\n");
+	        MUDC_LOG_INFO("Processing an tcp protocol\n");
 
 		acllist[acl_index].ace[ace_index].matches.protocol = 6;
 
@@ -1119,7 +1119,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	     * udp
 	     */
 	    if ((tmp_json=cJSON_GetObjectItem(matches_json, "udp"))) {
-	        MUDC_LOG_ERR("Processing an udp protocol\n");
+	        MUDC_LOG_INFO("Processing an udp protocol\n");
 
 		acllist[acl_index].ace[ace_index].matches.protocol = 17;
 
@@ -1153,7 +1153,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	     * ietf-mud:mud
 	     */
 	    if ((tmp_json=cJSON_GetObjectItem(matches_json, "ietf-mud:mud"))) {
-	        MUDC_LOG_ERR("Processing a ietf-mud:mud protocol\n");
+	        MUDC_LOG_INFO("Processing a ietf-mud:mud protocol\n");
                 if ((ctrl_json=cJSON_GetObjectItem(tmp_json, "controller"))) {
                     acllist[acl_index].ace[ace_index].matches.dnsname = 
 		       convert_controller_to_ip(ctrl_json->valuestring, is_v6);
@@ -1289,7 +1289,7 @@ static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, boo
 
     mud_json = get_mudfile_uri((char *)uri);
     if (!mud_json) {
-        MUDC_LOG_ERR("No mudfile policy");
+        MUDC_LOG_INFO("No mudfile policy found for this URI");
         return false;
     }
     tmp_json = cJSON_GetObjectItem(mud_json, "Expiry-Time");
@@ -1583,18 +1583,18 @@ bool update_policy_database(request_context *ctx, cJSON* parsed_json)
     return(rc);
 }
 
-char *fetch_uri_from_macaddr(char *mac_addr)
+static bool fetch_uri_from_macaddr(char *mac_addr, char *ret_uri)
 {
     mongoc_cursor_t *cursor=NULL;
     bson_t *filter=NULL, *opts=NULL;
     const bson_t *doc=NULL;
-    char *uri=NULL;
     char *found_str=NULL;
     cJSON *found_json=NULL;
+    bool ret = false;
 
-    if (mac_addr == NULL) {
+    if ((mac_addr == NULL) || (ret_uri == NULL)){
         MUDC_LOG_ERR("Invalid parameters");
-        return NULL;
+        return ret;
     }
 
     filter = BCON_NEW("MAC_Addr", BCON_UTF8(mac_addr));
@@ -1615,7 +1615,10 @@ char *fetch_uri_from_macaddr(char *mac_addr)
             } else {
                 char *tmp = GETSTR_JSONOBJ(found_json, "URI");
                 if (tmp) {
-    		    uri = strdup(tmp);
+        	    strncpy(ret_uri, tmp, MAXREQURI);
+    		    MUDC_LOG_INFO("============= Returning URI:%s\n", 
+			    	  ret_uri);
+		    ret = true;
                 }
                 cJSON_Delete(found_json);
             }
@@ -1627,9 +1630,8 @@ char *fetch_uri_from_macaddr(char *mac_addr)
     bson_destroy(filter);
     bson_destroy(opts);
 
-    MUDC_LOG_INFO("============= Returning URI:%s\n", uri);
 
-    return(uri);
+    return ret;
 }
 
 int put_uri_into_macaddr(char *mac_addr, char *uri)
@@ -1651,7 +1653,7 @@ int put_uri_into_macaddr(char *mac_addr, char *uri)
 
     query =  BCON_NEW("MAC_Addr", mac_addr);
 
-    MUDC_LOG_ERR("Attempting to insert URI into MAC address record");
+    MUDC_LOG_INFO("Attempting to insert URI into MAC address record");
     if (!mongoc_collection_find_and_modify(macaddr_collection, query, NULL, update, NULL, false, true, false, NULL,&error)) {
         MUDC_LOG_ERR("mongoc find_and_modify failed: %s", error.message);
         return(false);
@@ -2413,7 +2415,7 @@ static int handle_get_aclname(struct mg_connection *nc,
     char *uri=NULL, *mac_addr=NULL, *nas=NULL, *session_id=NULL;
     cJSON *request_json=NULL;
     int foundacls = 0;
-    char *found_uri=NULL;
+    char found_uri[MAXREQURI];
     int can_store_valid_uri = 0;
     bool cache_expired = false;
 
@@ -2449,8 +2451,8 @@ static int handle_get_aclname(struct mg_connection *nc,
 	/* 
 	 * Look for URI associated with the MAC address.
 	 */
-	found_uri = fetch_uri_from_macaddr(mac_addr);
-	if (found_uri) {
+    	memset(found_uri, 0, sizeof(found_uri)); // make valgrind happy
+	if (fetch_uri_from_macaddr(mac_addr, found_uri) == true) {
 	    MUDC_LOG_INFO("Found URI %s for MAC address %s\n", found_uri, 
 		    	  mac_addr);
 	    if (uri == NULL) {
@@ -2562,9 +2564,6 @@ static int handle_get_aclname(struct mg_connection *nc,
 
 err:
 end:
-    if (found_uri != NULL) {
-        free(found_uri);
-    }
     cJSON_Delete(request_json);
 
     return 1;
