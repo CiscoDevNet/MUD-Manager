@@ -134,6 +134,8 @@ char *fetch_json_info(CURL *curl, char *get_url, char *request_str,
     if (res != CURLE_OK) {
         fprintf(stderr, "curl_easy_perform() failed: %s\n",
 	                 curl_easy_strerror(res));
+        curl_slist_free_all(headers);
+        free(response.memory);
 	return NULL;
     }
 
@@ -199,6 +201,8 @@ int test_client_get_acls(CURL *curl, char* uri, char* mac_addr, char* nas,
 	    		       "aclname");
     if ((response_len == 0) && (!response)) {
 	fprintf(stderr, "Aborting. No ACL name found.\n");
+    	cJSON_Delete(jsonRequest);
+	curl_easy_cleanup(curl);
 	return 1;
     }
     cJSON_Delete(jsonRequest);
@@ -324,6 +328,12 @@ int main(int argc, char *argv[])
     char url[14+WEBSERVERMAX+MUDFILEMAX];
     CURL *curl;
 
+   memset(webserver, 0, WEBSERVERMAX); 
+   memset(mudfile, 0, MUDFILEMAX); 
+   memset(mac_addr, 0, MACADDRMAX); 
+   memset(nas, 0, NASMAX); 
+   memset(sess_id, 0, SESSMAX); 
+
     while ((opt = getopt(argc, argv, "a:n:s:bf:mw:c:p:")) != -1) {
         switch (opt) {
             case 'a': 
@@ -358,6 +368,11 @@ int main(int argc, char *argv[])
                 usage(argv[0]);
                 exit(1);
         }
+    }
+
+    if ((webserver[0] == 0) || (mudfile[0] == 0)) {
+    	usage(argv[0]);
+        exit(1);
     }
 
     /*
