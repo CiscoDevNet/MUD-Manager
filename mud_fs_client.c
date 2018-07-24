@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <curl/curl.h>
+#include "log.h"
 
 /*
  * Memory for callbacks
@@ -24,7 +25,7 @@ WriteMemoryCallback(void *contents, size_t size, size_t nmemb, void *userp)
     mem->memory = realloc(mem->memory, mem->size + realsize + 1);
     if (mem->memory == NULL) {
     	/* out of memory! */ 
-	printf("not enough memory (realloc returned NULL)\n");
+	MUDC_LOG_ERR("not enough memory (realloc returned NULL)\n");
 	return 0;
     }
 	     
@@ -46,24 +47,28 @@ static size_t validateheaders(void *ptr, size_t size, size_t nmemb,
 
     char *header = (char *)userdata;
 
+    MUDC_LOG_INFO("Header: %s", ptr);
+
     /*
      * Check the HTTP return code.
      */
     s = strncmp(ptr, "HTTP/", 5);
     if (s == 0) {
 	/* 
-	 * Check for the code. The 'str' variable i unused, but
-	 * provides a sort of regular expression way to capture
-	 * the code, regardless of HTTP version.
+	 * Check for the code. The 'str' variable is unused, but
+	 * provides a means to capture the HTTP code, regardless of 
+	 * HTTP version. (sscanf() uses its own parsing languague
+	 * rather then regexp.)
 	 */
 	r = sscanf(ptr, "HTTP/%[^ ]%d OK", str, &code);
     	if (r == 0) {
-	    printf("HTTP code not found\n");
+	    MUDC_LOG_ERR("HTTP code not found\n");
 	    ret = 0;
     	} else if (code != 200) {
-	    printf("Unexpected return code: %d\n", code);
+	    MUDC_LOG_ERR("Unexpected return code: %d\n", code);
 	    ret = 0;
-    	} 
+    	}
+	MUDC_LOG_INFO("str: %s\n", str);
     }
 
     s = sscanf(ptr, "Content-Type: %s\n", contenttype);
@@ -72,9 +77,9 @@ static size_t validateheaders(void *ptr, size_t size, size_t nmemb,
      	 * Verify that the retrieved content-type is the expected one.
      	 */
 	if (strncmp(contenttype, header, strlen(header))) {
-	    printf("contenttype=%sXXX\n", contenttype);
-	    printf("header=%sXXX\n", header);
-	    printf(" Unexpected Content-Type: %s\n", contenttype);
+	    MUDC_LOG_INFO("contenttype=%sXXX\n", contenttype);
+	    MUDC_LOG_INFO("header=%sXXX\n", header);
+	    MUDC_LOG_ERR(" Unexpected Content-Type: %s\n", contenttype);
 	    ret = 0;
 	}
     }
@@ -120,7 +125,7 @@ char *fetch_file(CURL *curl, char *get_url,
         headers = curl_slist_append(headers, 
 				    "Accept: application/pkcs7-signed");
     } else {
-	fprintf(stderr, "Request is not a .json file or signature file\n");
+	MUDC_LOG_ERR("Request is not a .json file or signature file\n");
 	return NULL;
     }
     headers = curl_slist_append(headers, "Content-Type: application/mud+json");
@@ -130,7 +135,7 @@ char *fetch_file(CURL *curl, char *get_url,
     res = curl_easy_perform(curl);
     /* check for errors */ 
     if (res != CURLE_OK) {
-        fprintf(stderr, "curl_easy_perform() failed: %s\n",
+        MUDC_LOG_ERR("curl_easy_perform() failed: %s\n",
 	                 curl_easy_strerror(res));
         curl_slist_free_all(headers);
         free(response.memory);
