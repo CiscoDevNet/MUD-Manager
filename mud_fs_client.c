@@ -107,7 +107,12 @@ char *fetch_file(CURL *curl, char *get_url,
     response.size = 0;    /* no data at this point */ 
 
 
+    /*
+     * There should be a "verbose" flag to determine whether VERBOSE is 1L
+     * and whether STDERR is defined at all.
+     */
     curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L); /* Set to 1L for more output */
+    curl_easy_setopt(curl, CURLOPT_STDERR, stdout); /* See msgs on stdout */
     curl_easy_setopt(curl, CURLOPT_URL, get_url);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, validateheaders);
