@@ -141,6 +141,37 @@ Two scripts are included to manipulate the MUD Manger collections in MongoDB.
 
 The examples directory includes an example of a "luminaire", which includes a sample MUD file, sample MUD file server, certificates, and instructions how to use the mud_test_command to invoke the MUD Manager. 
 
+## MUD Manger Test Command
+
+A simple test command is included, which initates REST APIs to the MUD Manager and verifies that the MUD Manager can download and process a  MUD file.
+
+If the "luminaire" example MUD file server is running, and the MUD manage is started on its default port, then the following test command should retrieve the MUD file and the return the ACLs contained within it.
+
+    mud_test_client -f Luminaire_150 -c 127.0.0.1 -p 8000 -w luminaire.example.com
+
+The output should look something like this:
+
+        URL:  https://luminaire.example.com/Luminaire_150
+        
+        Starting RESTful client against http://127.0.0.1:8000/getaclname
+            with request {
+                "MUD_URI":      "https://luminaire.example.com/Luminaire_150"
+        }
+        Got ACL Names
+        Full ACL Name 0: ACS:CiscoSecure-Defined-ACL=mud-21966-v4fr.in
+        ACLname: mud-21966-v4fr.in
+        
+        Starting RESTful client against http://127.0.0.1:8000/getaclpolicy with request {
+                "ACL_NAME":     "mud-21966-v4fr.in"
+        }
+        Username: mud-21966-v4fr.in
+        Got DACL contents:
+                ACE: ip:inacl#10=permit tcp any host 172.12.212.10 range 443 443 established
+                ACE: ip:inacl#20=permit udp any host 10.1.1.4 range 5684 5684
+                ACE: ip:inacl#30=permit udp any host 255.255.255.255 range 5683 5683
+                ACE: ip:inacl#40=permit tcp any eq 22 any
+                ACE: ip:inacl#41=deny ip any any
+
 ## Contributers
 Rashmikant Shah
 
