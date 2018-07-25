@@ -40,6 +40,9 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
     parsed_json = cJSON_CreateArray();
     ace_ptr = ace_str;
 
+    /*
+     * Build dACLs for each ACL in the list.
+     */
     for (index=0; index < acl_count; index++) {
         if ((acllist[index].pak_direction == EGRESS) && 
 	    (direction == INGRESS_ONLY_ACL)) {
@@ -54,20 +57,25 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
             return NULL;
         }
 
-        MUDC_LOG_INFO("ACLName <%s> %d", acllist[index].acl_name, acllist[index].pak_direction);
+        MUDC_LOG_INFO("ACLName <%s> %d", acllist[index].acl_name, 
+					  acllist[index].pak_direction);
         if (acl_list_prefix != NULL) {
             sprintf(policy_name, "%s", acl_list_prefix);
         }
         if (acllist[index].pak_direction == INGRESS) {
-            sprintf(policy_name, "%sCiscoSecure-Defined-ACL=%s.in", policy_name, acllist[index].acl_name);
+            sprintf(policy_name, "%sCiscoSecure-Defined-ACL=%s.in", 
+		    policy_name, acllist[index].acl_name);
             acl_prefix="inacl";
         } else if (acllist[index].pak_direction == EGRESS) {
-            sprintf(policy_name, "%sCiscoSecure-Defined-ACL=%s.out", policy_name, acllist[index].acl_name);
+            sprintf(policy_name, "%sCiscoSecure-Defined-ACL=%s.out", 
+		    policy_name, acllist[index].acl_name);
             acl_prefix="outacl";
         }
 
-        cJSON_AddItemToObject(response_acl, "DACL_Name",cJSON_CreateString(policy_name));
-        cJSON_AddItemToObject(response_acl, "DACL", acefmt = cJSON_CreateArray());
+        cJSON_AddItemToObject(response_acl, "DACL_Name",
+			      cJSON_CreateString(policy_name));
+        cJSON_AddItemToObject(response_acl, "DACL", 
+			      acefmt = cJSON_CreateArray());
 
         MUDC_LOG_INFO("Ace Count <%d>", acllist[index].ace_count);
         for (ace_index=0; ace_index < acllist[index].ace_count; ace_index++) {
@@ -79,9 +87,11 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
 
             if (acllist[index].ace[ace_index].action == 1) {
 		if (acllist[index].ace[ace_index].num_ace == 2) {
-                	ace_ptr+= sprintf(ace_ptr, "%s#%d=permit", acl_prefix, (ace_index+1)*10-1);
+                	ace_ptr+= sprintf(ace_ptr, "%s#%d=permit", acl_prefix, 
+					  (ace_index+1)*10-1);
 		} else {
-                	ace_ptr+= sprintf(ace_ptr, "%s#%d=permit", acl_prefix, (ace_index+1)*10);
+                	ace_ptr+= sprintf(ace_ptr, "%s#%d=permit", acl_prefix, 
+					  (ace_index+1)*10);
 		}
             }
             if (acllist[index].ace[ace_index].matches.protocol == 6) {
@@ -93,8 +103,10 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
             if (acllist[index].pak_direction == INGRESS) {
                 ace_ptr += sprintf(ace_ptr, " any");
                 if ((acllist[index].ace[ace_index].matches.src_lower_port != 0)
-                        && (acllist[index].ace[ace_index].matches.src_upper_port != 0 )) {
-                    ace_ptr += sprintf(ace_ptr, " range %d %d", acllist[index].ace[ace_index].matches.src_lower_port,
+                    && (acllist[index].ace[ace_index].matches.src_upper_port 
+			!= 0 )) {
+                    ace_ptr += sprintf(ace_ptr, " range %d %d", 
+		 	acllist[index].ace[ace_index].matches.src_lower_port,
                         acllist[index].ace[ace_index].matches.src_upper_port);
                 }
             }
@@ -108,26 +120,32 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
 
             if (acllist[index].pak_direction == INGRESS) {
                 if ((acllist[index].ace[ace_index].matches.dst_lower_port != 0)
-                        && (acllist[index].ace[ace_index].matches.dst_upper_port != 0 )) {
-                    ace_ptr += sprintf(ace_ptr, " range %d %d", acllist[index].ace[ace_index].matches.dst_lower_port,
+                    && (acllist[index].ace[ace_index].matches.dst_upper_port 
+			!= 0 )) {
+                    ace_ptr += sprintf(ace_ptr, " range %d %d", 
+			acllist[index].ace[ace_index].matches.dst_lower_port,
                         acllist[index].ace[ace_index].matches.dst_upper_port);
                 }
             } else if (acllist[index].pak_direction == EGRESS) {
                 if ((acllist[index].ace[ace_index].matches.src_lower_port != 0)
-                        && (acllist[index].ace[ace_index].matches.src_upper_port != 0 )) {
-                    ace_ptr += sprintf(ace_ptr, " range %d %d", acllist[index].ace[ace_index].matches.src_lower_port,
+                    && (acllist[index].ace[ace_index].matches.src_upper_port 
+			!= 0 )) {
+                    ace_ptr += sprintf(ace_ptr, " range %d %d", 
+			acllist[index].ace[ace_index].matches.src_lower_port,
                         acllist[index].ace[ace_index].matches.src_upper_port);
                 }
                 ace_ptr += sprintf(ace_ptr, " any");
                 if ((acllist[index].ace[ace_index].matches.dst_lower_port != 0)
-                        && (acllist[index].ace[ace_index].matches.dst_upper_port != 0 )) {
-                    ace_ptr += sprintf(ace_ptr, " range %d %d", acllist[index].ace[ace_index].matches.dst_lower_port, 
+                    && (acllist[index].ace[ace_index].matches.dst_upper_port 
+			!= 0 )) {
+                    ace_ptr += sprintf(ace_ptr, " range %d %d", 
+			acllist[index].ace[ace_index].matches.dst_lower_port, 
                         acllist[index].ace[ace_index].matches.dst_upper_port);
                 }
             }
 
             if ((acllist[index].ace[ace_index].matches.protocol == 6) && 
-                    (acllist[index].ace[ace_index].matches.dir_initiated != -1)) {
+                (acllist[index].ace[ace_index].matches.dir_initiated != -1)) {
                 if (acllist[index].ace[ace_index].num_ace == 2) {
                     ace_ptr += sprintf(ace_ptr, " syn");
 		    acllist[index].ace[ace_index].num_ace--;
@@ -140,36 +158,51 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
             cJSON_AddItemToArray(acefmt, cJSON_CreateString(ace_str));
             ace_ptr = ace_str;
         }
-        if (defacl_json == NULL) {
-            MUDC_LOG_INFO("In NULL if");
-            if (strcmp(acllist[index].acl_type, "ipv4") == 0) {
-                ace_ptr += sprintf(ace_ptr, "ip:%s#%d=deny ip any any", acl_prefix, (ace_index+1)*10);
-            } else if (strcmp(acllist[index].acl_type, "ipv6") == 0) {
-                ace_ptr += sprintf(ace_ptr, "ip:%s#%d=deny ipv6 any any", acl_prefix, (ace_index+1)*10);
-            }
-            cJSON_AddItemToArray(acefmt, cJSON_CreateString(ace_str));
-            ace_ptr = ace_str;
-            cJSON_AddItemToArray(parsed_json, cJSON_Duplicate(response_acl, 
-				 (cJSON_bool)1));
-        } else {
-            if (strcmp(acllist[index].acl_type, "ipv4") == 0) {
-                for(i=0; i < cJSON_GetArraySize(defacl_json); i++) {
-                    ace_ptr += sprintf(ace_ptr, "ip:%s#%d=%s", acl_prefix, (ace_index+1)*10+i, GETSTR_JSONARRAY(defacl_json, i));
+
+    	/*
+     	 * Find any ACL definitions to add. If not, add "deny ip any any".
+     	 */
+
+    	if (strcmp(acllist[index].acl_type, "ipv4") == 0) {
+            if (defacl_json == NULL) {
+       	    	MUDC_LOG_INFO("Using hardcoded default IPv4 ACL");
+            	ace_ptr += sprintf(ace_ptr, "ip:%s#%d=deny ip any any", 
+			       	   acl_prefix, (ace_index+1)*10);
+             	cJSON_AddItemToArray(acefmt, cJSON_CreateString(ace_str));
+             	ace_ptr = ace_str;
+	    } else {
+            	for (i=0; i < cJSON_GetArraySize(defacl_json); i++) {
+                    ace_ptr += sprintf(ace_ptr, "ip:%s#%d=%s", acl_prefix, 
+				       (ace_index+1)*10+i, 
+				       GETSTR_JSONARRAY(defacl_json, i));
                     cJSON_AddItemToArray(acefmt, cJSON_CreateString(ace_str));
                     ace_ptr = ace_str;
-                }
-            } else if (strcmp(acllist[index].acl_type, "ipv6") == 0) {
-                for(i=0; i < cJSON_GetArraySize(defacl_v6_json); i++) {
-                    ace_ptr += sprintf(ace_ptr, "ipv6:%s#%d=%s", acl_prefix, (ace_index+1)*10+i, GETSTR_JSONARRAY(defacl_v6_json, i));
+            	}
+	    }
+    	} else { /* ipv6 */
+            if (defacl_v6_json == NULL) {
+            	MUDC_LOG_INFO("Using hardcoded default IPv6 ACL");
+            	ace_ptr += sprintf(ace_ptr, "ipv6:%s#%d=deny ipv6 any any", 
+			       	   acl_prefix, (ace_index+1)*10);
+            	cJSON_AddItemToArray(acefmt, cJSON_CreateString(ace_str));
+            	ace_ptr = ace_str;
+	    } else {
+            	for (i=0; i < cJSON_GetArraySize(defacl_v6_json); i++) {
+                    ace_ptr += sprintf(ace_ptr, "ipv6:%s#%d=%s", acl_prefix, 
+		    	               (ace_index+1)*10+i, 
+				       GETSTR_JSONARRAY(defacl_v6_json, i));
                     cJSON_AddItemToArray(acefmt, cJSON_CreateString(ace_str));
                     ace_ptr = ace_str;
-                }
+            	}
             }
-            cJSON_AddItemToArray(parsed_json, cJSON_Duplicate(response_acl, 
-				 (cJSON_bool)1));
-        }
-        cJSON_Delete(response_acl);
+    	}
+	
+    	cJSON_AddItemToArray(parsed_json, cJSON_Duplicate(response_acl, 
+			     (cJSON_bool)1));
+
+    	cJSON_Delete(response_acl);
     }
+    
     txt = cJSON_Print(parsed_json);
     if (txt != NULL) {
         MUDC_LOG_INFO("Returning parsed_json %s", txt);
