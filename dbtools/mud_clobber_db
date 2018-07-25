@@ -1,3 +1,25 @@
 #!/bin/bash
 
+FORCE="no"
+
+while getopts f c; do
+    case "$c" in
+	f)	FORCE="yes"; shift;;
+	*)	echo "$0: $0 [-f]"; exit;;
+    esac
+done
+
+if [ ${FORCE} != "yes" ]; then
+    echo "WARNING: This will delete all MUD URL's and derived policy"
+    echo "         from the MUD Manager DB."
+    while true; do
+    	read -p "Continue? Y/N" yn
+    	case $yn in
+	    [Yy]*) break;;
+	    [Nn]*) echo "Aborting."; exit;;
+	    *) echo "Please anser yes or no.";;
+        esac
+    done
+fi
+
 mongo mud_manager --eval "db.dropDatabase()"
