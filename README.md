@@ -16,6 +16,9 @@ A MUD URL is an "https://..." file, which means that TLS is used to fetch the fi
 ## Install Requirements
 The MUD manager depends on the following packages.
 
+### OpenSSL
+OpenSSL is used for cryptographic services, and is available on most Linux systems. If not, then a recent release will need to be installed. It may be available using a package installer (such as apt-get), else it can be downladed from https://www.openssl.org. 
+
 ### cJSON
 cJSON is used for JSON processing in "C". Download it from (https://github.com/DaveGamble/cJSON)
 
