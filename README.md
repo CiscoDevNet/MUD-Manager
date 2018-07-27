@@ -8,6 +8,8 @@ Manufacturer Usage Description (MUD) is a technique whereby constrained end devi
 The MUD specification can be found in
 (https://tools.ietf.org/html/draft-ietf-opsawg-mud-25), which has been approved to be an IETF RFC.
 
+After you have installed the MUD Manager, guidance is available at (https://developer.cisco.com/docs/mud/#!mud-developer-guide)if you need help creating a MUD file, and/or preparing a device to emit a URL to a MUD file.
+
 ## How the MUD Manager is used
 The MUD Manager is used by a RADIUS server to translate a MUD URL into access control policies. The MUD Manager receives REST APIs containing the MUD URL (and possibly other information), and returns RADIUS attributes that can be sent to a Network Access Device (NAD) such as an Ethernet switch. The NAD installs the policy on the access port, which restricts the device providing the MUD URL to just its required network access.
 
@@ -38,6 +40,10 @@ Most likely MongoDB can be installed using a package tool such as apt-get:
 Alternatively it can be downloaded with git, and the follow the instructions in its README.
 
         git clone https://github.com/mongodb/mongo.git
+
+The MongoDB service should be started automatically when the system boots. If you see an indication that the MUD Manager cannot reach the MongoDB server, you can try
+
+        sudo service mongodb start
 
 ### Mongo C driver
 The Mongo C driver is needed for the MUD manager to communicate with MongoDB. Download from https://github.com/mongodb/mongo-c-driver/releases. We suggest using version 1.7.0
