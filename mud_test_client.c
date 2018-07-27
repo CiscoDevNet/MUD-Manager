@@ -209,8 +209,6 @@ int test_client_get_acls(CURL *curl, char* uri, char* mac_addr, char* nas,
     free(get_url);
     get_url = NULL;
 
-    get_url = create_uri("getaclpolicy");
-
     printf("Got ACL Names\n");
     res_json = cJSON_Parse((char*)response);
     acl_name_array = cJSON_GetObjectItem(res_json, "Cisco-AVPair");
@@ -234,6 +232,8 @@ int test_client_get_acls(CURL *curl, char* uri, char* mac_addr, char* nas,
         cJSON_AddItemToObject(jsonRequest, "ACL_NAME", 
 	   		      cJSON_CreateString(aclname));
     	request_str = cJSON_Print(jsonRequest);
+
+    	get_url = create_uri("getaclpolicy");
 
     	printf("\nStarting RESTful client against %s with request %s\n", 
 		get_url, request_str);
