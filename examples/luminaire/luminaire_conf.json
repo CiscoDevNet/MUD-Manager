@@ -16,12 +16,5 @@
 	"ControllerMapping" : {
 		"http://lightcontroller.example.com" : "10.1.1.5"
 	},
-	"DefaultACL" : ["deny ip any any"],
-	"DNSMapping_v6" : {
-		"fw-update.luminaire.example.com" : "1111:2222:4533:2223:::"
-	},
-	"ControllerMapping_v6" : {
-		"http://lightcontroller.example.com" : "ffff:2343:4444:::"
-	},
-	"DefaultACL_v6" : ["deny ipv6 any any"]
+	"DefaultACL" : ["permit udp any any eq 53", "deny ip any any"]
 }
