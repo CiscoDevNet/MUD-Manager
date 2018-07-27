@@ -18,6 +18,6 @@ cJSON* get_policy_by_aclname(enum acl_policy_type acl_type, char* acl_name);
  * Definitions used by code manipulating ACLs in the JSON file.
  */
 #define GETSTR_JSONOBJ(j,v) cJSON_GetObjectItem(j,v) ? cJSON_GetObjectItem(j, v)->valuestring: NULL
-#define GETSTR_JSONARRAY(j,i) cJSON_GetArrayItem(defacl_json, i)->valuestring
+#define GETSTR_JSONARRAY(j,i) cJSON_GetArrayItem(j, i)->valuestring
 #define GETINT_JSONOBJ(j,v) cJSON_GetObjectItem(j,v) ? cJSON_GetObjectItem(j, v)->valueint: 0
 

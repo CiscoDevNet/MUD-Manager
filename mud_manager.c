@@ -104,11 +104,6 @@ static char *mongoDb_mudfile_coll=NULL;
 static char *mongoDb_macaddr_coll=NULL;
 static int num_manu = 0;
 
-#define GETSTR_JSONOBJ(j,v) cJSON_GetObjectItem(j,v) ? cJSON_GetObjectItem(j, v)->valuestring: NULL
-#define GETSTR_JSONARRAY(j,i) cJSON_GetArrayItem(defacl_json, i)->valuestring
-#define GETINT_JSONOBJ(j,v) cJSON_GetObjectItem(j,v) ? cJSON_GetObjectItem(j, v)->valueint: 0
-
-
 static bool mudc_construct_head(struct mg_connection *nc, int status_code,
                                 int content_len, const char *extra_headers)
 {
@@ -366,11 +361,11 @@ static int read_mudmgr_config (char* filename)
         }
         defacl_json = cJSON_GetObjectItem(config_json, "DefaultACL");
         if (defacl_json == NULL) {
-            MUDC_LOG_INFO("No Default ACL configured");
+            MUDC_LOG_INFO("No Default IPv4 ACL configured");
         }
         defacl_v6_json = cJSON_GetObjectItem(config_json, "DefaultACL_v6");
         if (defacl_v6_json == NULL) {
-            MUDC_LOG_INFO("No Default ACL configured");
+            MUDC_LOG_INFO("No Default IPv6 ACL configured");
         }
 
         mongoDb_name = GETSTR_JSONOBJ(config_json, "MongoDB_Name");
