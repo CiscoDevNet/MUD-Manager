@@ -1,7 +1,7 @@
 # Copyright (c) 2017-2018 by Cisco Systems, Inc.
 # All rights reserved.
 
-AC_INIT([MUD Manager], 1.0)
+AC_INIT([MUD Manager], 0.8)
 AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_AUX_DIR(config)
 AM_INIT_AUTOMAKE([foreign -Wall -Werror subdir-objects])
