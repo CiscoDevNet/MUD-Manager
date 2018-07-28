@@ -714,6 +714,7 @@ enable_option_checking
 enable_silent_rules
 enable_dependency_tracking
 with_ssl_dir
+with_libcurl_dir
 with_mongoc
 with_bson
 with_cjson
@@ -1365,6 +1366,7 @@ Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
   --with-ssl-dir=PATH     Specify path to OpenSSL installation
+  --with-libcurl-dir=PATH     Specify path to libcurl installation
   --with-mongoc=PATH     Specify path to MongoDB C Driver library
   --with-bson=PATH     Specify path to bson library
   --with-cjson=PATH     Specify path to cjson library
@@ -4303,6 +4305,98 @@ if test "x$ac_cv_header_openssl_x509v3_h" = xyes; then :
 
 fi
 
+
+fi
+
+#
+# Libcurl is required
+#
+
+
+# Check whether --with-libcurl-dir was given.
+if test "${with_libcurl_dir+set}" = set; then :
+  withval=$with_libcurl_dir;   if test "x$withval" = "xno" ; then
+    	       echo "libcurl is required"; exit 1
+	   else
+		curldir=$withval
+	   fi
+
+
+fi
+
+
+saved_LIBS="$LIBS"
+saved_LDFLAGS="$LDFLAGS"
+saved_CPPFLAGS="$CPPFLAGS"
+
+if test "x$curldir" != "x" ; then
+    # Try to use $curldir/lib if it exists, otherwise just $ssldir
+    if test -d "$curldir/lib" ; then
+        LDFLAGS="-L$curldir/lib $saved_LDFLAGS"
+    else
+        LDFLAGS="-L$curldir $saved_LDFLAGS"
+    fi
+    LIBS="$savedLIBS -lcurl"
+else
+# Search for openssl and crypto libraries in standard paths
+    { $as_echo "$as_me:${as_lineno-$LINENO}: checking for library containing curl_easy_setopt" >&5
+$as_echo_n "checking for library containing curl_easy_setopt... " >&6; }
+if ${ac_cv_search_curl_easy_setopt+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_func_search_save_LIBS=$LIBS
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char curl_easy_setopt ();
+int
+main ()
+{
+return curl_easy_setopt ();
+  ;
+  return 0;
+}
+_ACEOF
+for ac_lib in '' curl; do
+  if test -z "$ac_lib"; then
+    ac_res="none required"
+  else
+    ac_res=-l$ac_lib
+    LIBS="-l$ac_lib  $ac_func_search_save_LIBS"
+  fi
+  if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_search_curl_easy_setopt=$ac_res
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext
+  if ${ac_cv_search_curl_easy_setopt+:} false; then :
+  break
+fi
+done
+if ${ac_cv_search_curl_easy_setopt+:} false; then :
+
+else
+  ac_cv_search_curl_easy_setopt=no
+fi
+rm conftest.$ac_ext
+LIBS=$ac_func_search_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_search_curl_easy_setopt" >&5
+$as_echo "$ac_cv_search_curl_easy_setopt" >&6; }
+ac_res=$ac_cv_search_curl_easy_setopt
+if test "$ac_res" != no; then :
+  test "$ac_res" = "none required" || LIBS="$ac_res $LIBS"
+
+else
+  as_fn_error $? "unable to find libcurl" "$LINENO" 5
+
+fi
 
 fi
 

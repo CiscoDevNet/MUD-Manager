@@ -21,9 +21,6 @@ EXTRA_DIST = APIDOCS.txt LICENSE mud_manager_conf.json examples \
 
 AM_CFLAGS = -DMG_ENABLE_SSL -Wall -W
 
-# This is temporary. It should be found in configure.ac
-LDADD = -lcurl
-
 install-data-local:
 	if ! test -e ${sysconfdir}/mud_manager_conf.json ; then \
 	    $(MKDIR_P) "${sysconfdir}" || exit 1; \

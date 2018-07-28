@@ -113,11 +113,9 @@ nodist_mud_manager_OBJECTS =
 mud_manager_OBJECTS = $(am_mud_manager_OBJECTS) \
 	$(nodist_mud_manager_OBJECTS)
 mud_manager_LDADD = $(LDADD)
-mud_manager_DEPENDENCIES =
 am_mud_test_client_OBJECTS = mud_test_client.$(OBJEXT)
 mud_test_client_OBJECTS = $(am_mud_test_client_OBJECTS)
 mud_test_client_LDADD = $(LDADD)
-mud_test_client_DEPENDENCIES =
 am__vpath_adj_setup = srcdirstrip=`echo "$(srcdir)" | sed 's|.|.|g'`;
 am__vpath_adj = case $$p in \
     $(srcdir)/*) f=`echo "$$p" | sed "s|^$$srcdirstrip/||"`;; \
@@ -331,9 +329,6 @@ EXTRA_DIST = APIDOCS.txt LICENSE mud_manager_conf.json examples \
        civetweb/md5.inl civetweb/sha1.inl civetweb/handle_form.inl civetweb/timer.inl
 
 AM_CFLAGS = -DMG_ENABLE_SSL -Wall -W
-
-# This is temporary. It should be found in configure.ac
-LDADD = -lcurl
 all: config.h
 	$(MAKE) $(AM_MAKEFLAGS) all-am
 

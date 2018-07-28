@@ -52,6 +52,39 @@ else
 fi
 
 #
+# Libcurl is required
+#
+
+AC_ARG_WITH(libcurl-dir,
+	[  --with-libcurl-dir=PATH     Specify path to libcurl installation ],
+	[  if test "x$withval" = "xno" ; then
+    	       echo "libcurl is required"; exit 1
+	   else
+		curldir=$withval
+	   fi
+	]
+)
+
+saved_LIBS="$LIBS"
+saved_LDFLAGS="$LDFLAGS"
+saved_CPPFLAGS="$CPPFLAGS"
+
+if test "x$curldir" != "x" ; then
+    # Try to use $curldir/lib if it exists, otherwise just $ssldir 
+    if test -d "$curldir/lib" ; then
+        LDFLAGS="-L$curldir/lib $saved_LDFLAGS"
+    else
+        LDFLAGS="-L$curldir $saved_LDFLAGS"
+    fi
+    LIBS="$savedLIBS -lcurl"
+else
+# Search for openssl and crypto libraries in standard paths
+    AC_SEARCH_LIBS([curl_easy_setopt], [curl], [], 
+                   [AC_MSG_ERROR([unable to find libcurl])]
+                  )
+fi
+
+#
 # Find mongoc
 #
 AC_ARG_WITH(mongoc,
