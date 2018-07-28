@@ -39,7 +39,7 @@ if test "x$ssldir" != "x" ; then
     else
         CPPFLAGS="-I$ssldir $saved_CPPFLAGS"
     fi
-    LIBS="$savedLIBS -lssl -lcrypto"
+    LIBS="$saved_LIBS -lssl -lcrypto"
 else
 # Search for openssl and crypto libraries in standard paths
     AC_SEARCH_LIBS([EVP_EncryptInit], [crypto], [], 
@@ -76,7 +76,7 @@ if test "x$curldir" != "x" ; then
     else
         LDFLAGS="-L$curldir $saved_LDFLAGS"
     fi
-    LIBS="$savedLIBS -lcurl"
+    LIBS="$saved_LIBS -lcurl"
 else
 # Search for openssl and crypto libraries in standard paths
     AC_SEARCH_LIBS([curl_easy_setopt], [curl], [], 
