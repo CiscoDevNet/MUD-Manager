@@ -15,8 +15,9 @@ nodist_mud_manager_SOURCES = config.status config.cache config.log \
 
 mud_test_client_SOURCES = mud_test_client.c
 
-EXTRA_DIST = APIDOCS.txt LICENSE mud_manager_conf.json examples \
-       civetweb/md5.inl civetweb/sha1.inl civetweb/handle_form.inl civetweb/timer.inl
+EXTRA_DIST = APIDOCS.txt LICENSE mud_manager_conf.json examples README.md \
+       civetweb/md5.inl civetweb/sha1.inl civetweb/handle_form.inl \
+       civetweb/timer.inl
 
 
 AM_CFLAGS = -DMG_ENABLE_SSL -Wall -W

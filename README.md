@@ -15,7 +15,7 @@ The MUD Manager is used by a RADIUS server to translate a MUD URL into access co
 
 A MUD URL is an "https://..." file, which means that TLS is used to fetch the file.
 
-## Install Requirements
+## Dependancies
 The MUD manager depends on the following packages.
 
 ### OpenSSL
@@ -75,7 +75,7 @@ The default location for the configuration file is:
 
         /usr/local/etc/mud_manager_config.json
 
-The following fields can be set in the configuration file
+The following fields can be set in the configuration file.
 
 ### MUDManagerAPIProtocol
 
@@ -84,7 +84,7 @@ This defines whether the REST APIs should be 'http://. or 'https://'. The defaul
 If 'https://' is used, then the MUD Manager will also need the following TLS-related fields added:
 
 * MUDManager_cert, with a pathname to the MUD Manager's signing certificate
-* MUDManager_key, with a pathname to the MUD Manger's private key
+* MUDManager_key, with a pathname to the MUD Manager's private key
 * Enterprise_CACert, with a pathname to the CA certificate that signed the MUDManager_cert
 
 ### ACL_Type
@@ -139,15 +139,15 @@ A site policy may provide additional restrictions to the devices. These can be d
 
 ## MongoDB Tools
 
-Two scripts are included to manipulate the MUD Manger collections in MongoDB.
-  * mud_clobber_db. This can be used to clean out the MUD Manger collections, which forces MUD files to be fetched and access policy to be re-gererated.
+Two scripts are included to manipulate the MUD Manager collections in MongoDB.
+  * mud_clobber_db. This can be used to clean out the MUD Manager collections, which forces MUD files to be fetched and access policy to be re-gererated.
   * mud_show_db. This displays the contents of the three collections used by the MUD Manager.
 
 ## Examples
 
 The examples directory includes an example of a "luminaire", which includes a sample MUD file, sample MUD file server, certificates, and instructions how to use the mud_test_command to invoke the MUD Manager. 
 
-## MUD Manger Test Command
+## MUD Manager Test Command
 
 A simple test command is included, which initates REST APIs to the MUD Manager and verifies that the MUD Manager can download and process a  MUD file.
 
