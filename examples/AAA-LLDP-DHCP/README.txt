@@ -8,19 +8,19 @@ Manger using the MUD Manger RESTful APIs. The MUD Manager will first return
 names of "dynamic ACLs" to the NAS, after which the NAS will request the dACL 
 contents by name. 
 
-Dependancies
+Dependencies
 ============
-FreeRADIUS 3.0. Although this might be available via a package (e.g.,
-apt-get), the configuration communicating with the MUD Manager requires the
-REST module, which is not available by default. Download and configuration
-instructions are below.
+FreeRADIUS 3.0.x. Although FreeRADIUS might be available in your distribution
+from a package (e.g., using apt-get), this example requires the REST module, 
+which is not included by default. Download and configuration instructions are 
+below.
 
 Perl 5. Earlier versions of Perl may also work but are untested.
 
 Making FreeRADIUS
 =================
 
-1. Install dependancies.
+1. Install dependancies for FreeRADIUS.
 
     sudo apt-get install -y libtalloc-dev
     sudo apt-get install -y libjson-c-dev
@@ -68,3 +68,5 @@ and use the "secret" configured on the NAS to talk to RADIUS servers.
 watch the messages
 
 	sudo radiusd -Xxx
+
+7. Start up the MUD Manager (e.g., using the luminaire example).
