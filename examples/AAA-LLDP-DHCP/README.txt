@@ -64,9 +64,13 @@ and use the "secret" configured on the NAS to talk to RADIUS servers.
 	    secret          = cisco
     }
 
-6. Start the RADIUS server. It's helpful to start it in the foreground and
+6. Start up the MUD Manager (e.g., using the luminaire example).
+
+NOTE: If ths MUD Manager is not listening on its socket, FreeRADIUS won't 
+      start properly.
+
+7. Start the RADIUS server. It's helpful to start it in the foreground and
 watch the messages
 
 	sudo radiusd -Xxx
 
-7. Start up the MUD Manager (e.g., using the luminaire example).
