@@ -29,7 +29,8 @@ add the following line.
 (3) Place the luminaire-cacert.pem file in the location specified by the
 configuration file
 
-	sudo mkdir /home/mudtester sudo cp luminaire-cacert.pem /home/mudtester
+	sudo mkdir /home/mudtester 
+	sudo cp luminaire-cacert.pem /home/mudtester
 
 (4) Ensure that the MongoDB collections used by the MUD Manager are empty
 
@@ -41,7 +42,7 @@ configuration file
 
 (6) Run the following command
 
-	mud_test_client -f Luminaire_150 -c 127.0.0.1:8000 -w
-	luminaire.example.com
+	mud_test_client -f Luminaire_150 -c 127.0.0.1:8000 \
+	                -w luminaire.example.com
 
 The output should look similar to the test_client_output.txt in this directory.
