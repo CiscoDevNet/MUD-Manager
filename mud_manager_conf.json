@@ -23,5 +23,5 @@
 		"http://lightcontroller.example.com" : "ffff:2343:4444:::"
 	},
 	"DefaultACL" : ["permit udp any any eq 53", "deny ip any any"],
-	"DefaultACL_v6" : ["permit udp any any eq 53", "deny ip any any"]
+	"DefaultACL_v6" : ["permit udp any any eq 53", "deny ipv6 any any"]
 }
