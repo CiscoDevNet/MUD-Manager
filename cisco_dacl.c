@@ -62,6 +62,18 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
         if (acl_list_prefix != NULL) {
             sprintf(policy_name, "%s", acl_list_prefix);
         }
+	/*
+	 * The name is currently taken directly from the MUD file, which
+	 * isn't guaranteed to be unique. Two MUD files could choose the same
+	 * name. So when we create the DACL name, we should add a counter or 
+	 * random value to the name that would premute the name a bit. 
+	 * E.g., instead of 
+	 * 	mud-85729-v6fr.in
+	 * make it
+	 * 	mm10430-mud-85729-v6fr.in
+	 * where "mm" is leading tag, and "10430" comes from a RNG each time
+	 * that policies are generated from a MUD URL and stored in mongodb.
+	 */
         if (acllist[index].pak_direction == INGRESS) {
             sprintf(policy_name, "%sCiscoSecure-Defined-ACL=%s.in", 
 		    policy_name, acllist[index].acl_name);
