@@ -140,11 +140,15 @@ char *fetch_file(CURL *curl, char *get_url,
     res = curl_easy_perform(curl);
     /* check for errors */ 
     if (res != CURLE_OK) {
-        MUDC_LOG_ERR("curl_easy_perform() failed: %s\n",
+	if (res == CURLE_RECV_ERROR) {
+	    MUDC_LOG_INFO("Ignoring the server error.");
+	} else {
+            MUDC_LOG_ERR("curl_easy_perform() failed: %s\n",
 	                 curl_easy_strerror(res));
-        curl_slist_free_all(headers);
-        free(response.memory);
-	return NULL;
+            curl_slist_free_all(headers);
+            free(response.memory);
+	    return NULL;
+	}
     }
 
     /*

@@ -2690,22 +2690,25 @@ DH *get_dh2236()
         0x02,
     };
     DH *dh;
+#if !(OPENSSL_VERSION_NUMBER < 0x10100000L)
     BIGNUM *p=NULL, *g=NULL;
+#endif
 
     if ((dh = DH_new()) == NULL) {
         return (NULL);
     }
-    p = BN_bin2bn(dh2236_p, sizeof(dh2236_p), NULL);
-    g = BN_bin2bn(dh2236_g, sizeof(dh2236_g), NULL);
-    if (!DH_set0_pqg(dh, p, NULL, g)) {
-	return (NULL);
-    }
-#if 0
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
     dh->p = BN_bin2bn(dh2236_p, sizeof(dh2236_p), NULL);
     dh->g = BN_bin2bn(dh2236_g, sizeof(dh2236_g), NULL);
     if ((dh->p == NULL) || (dh->g == NULL)) {
             DH_free(dh);
             return (NULL);
+    }
+#else
+    p = BN_bin2bn(dh2236_p, sizeof(dh2236_p), NULL);
+    g = BN_bin2bn(dh2236_g, sizeof(dh2236_g), NULL);
+    if (!DH_set0_pqg(dh, p, NULL, g)) {
+	return (NULL);
     }
 #endif
     return (dh);
