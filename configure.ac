@@ -1,4 +1,4 @@
-# Copyright (c) 2017-2018 by Cisco Systems, Inc.
+# Copyright (c) 2017-2018 Cisco and/or its affiliates.
 # All rights reserved.
 
 AC_INIT([MUD Manager], 0.8.2)

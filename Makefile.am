@@ -1,3 +1,6 @@
+# Copyright (c) 2017-2018 Cisco and/or its affiliates.
+# All rights reserved.
+
 bin_PROGRAMS = mud_manager mud_test_client
 
 noinst_HEADERS = acl.h log.h sessions.h acl_types.h cisco_dacl.h \
