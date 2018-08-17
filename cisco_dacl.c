@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2017-2018 by Cisco Systems, Inc.
+ * Copyright (c) 2017-2018 Cisco and/or its affiliates.
  * All rights reserved.
  *
  * Create a Cisco DACL response for a RADIUS server.
