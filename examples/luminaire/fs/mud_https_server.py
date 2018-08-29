@@ -68,7 +68,7 @@ def main(argv):
 	print('Keyfile is:', keyfile)
 
 	httpd = http.server.HTTPServer(('', port), Server) 
-	print("Starting HTTP Sever")
+	print("Starting HTTP Server")
 	httpd.socket = ssl.wrap_socket(httpd.socket, keyfile=keyfile, certfile=certfile, server_side=True)
 	httpd.serve_forever()
 
