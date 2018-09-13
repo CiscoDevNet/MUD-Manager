@@ -96,9 +96,9 @@
   
   	#
 *** mods-config/perl/example.pl	2018-04-17 10:12:27.000000000 -0700
---- mods-config/perl/example.pl	2018-09-10 20:36:36.486482507 -0700
+--- mods-config/perl/example.pl	2018-09-12 14:47:20.386077911 -0700
 ***************
-*** 149,156 ****
+*** 149,157 ****
   	# For debugging purposes only
   #	&log_request_attributes;
   
@@ -107,7 +107,8 @@
   
   	return RLM_MODULE_OK;
   }
---- 149,245 ----
+  
+--- 149,271 ----
   	# For debugging purposes only
   #	&log_request_attributes;
   
@@ -115,96 +116,122 @@
 ! 	# single AV pair that is not an array. FreeRADIUS seems to send 
 ! 	# them differently. So we have to check if there's just one or not 
 ! 	# (as well as checking for none).
-! 
-! 	if (not defined $RAD_REQUEST{'Cisco-AVPair'}) {
-! 		radiusd::radlog(L_DBG, "Cisco-AVPair not present");
-! 		return RLM_MODULE_OK;
-! 	}
-! 
-! 	if (ref($RAD_REQUEST{'Cisco-AVPair'}) eq 'ARRAY') {
-! 	    # 
-! 	    # The array is passed within a hash value, and there does not 
-! 	    # seem to be a way to get its size! Note that statements such
-! 	    # as 
-! 	    # 	my @values = values %RAD_REQUEST{'Cisco-AVPair'};
-! 	    # NO LONGER WORK as of Perl 5.28.
-! 	    #
-! 	    # So we loop through the array sequentially, assuming that 
-! 	    #   (a) There will be no more than 40 Cisco-AVPair values, and
-! 	    #   (b) the "method=" statement is the last one.
-! 	    #
-! 	    for (my $i=0; $i <=40; $i++) {
-! 	    	radiusd::radlog(L_DBG, "C-AV: $RAD_REQUEST{'Cisco-AVPair'}[$i]");
-! 			if ( $RAD_REQUEST{'Cisco-AVPair'}[$i] =~ /^method/ ) {
-! 	    		radiusd::radlog(L_DBG, "C-AV: End of List");
-! 			last;
-! 		}
-! 		#
-! 		# This finds a "vendor specific" LLDP TLV (type 127). It 
-! 		# may be a MUD URL, or may be some other TLV. To make sure
-! 		# it's a MUD URL, first check the IANA OUI and then find the
-! 		# 'http' string.
-! 		#
-! 		if ( $RAD_REQUEST{'Cisco-AVPair'}[$i] =~ /^lldp-tlv=\000\177/ ) {
-! 		    	my $value = $RAD_REQUEST{'Cisco-AVPair'}[$i];
-! 			if ($value =~ /\000\000\136\001http/) {
-! 				my $loc = index($value, "http");
-! 				$RAD_STATE{'Cisco-MUD-URL'} =  
-! 					substr($value, $loc);
-! 				radiusd::radlog(L_DBG, "Returning MUD URL from LLDP TLV: $RAD_STATE{'Cisco-MUD-URL'}");
-! 				last;
-! 	    		}
-! 		}
-! 		#
-! 		# This finds a DHCP Option 161, which should be a MUD URL.
-! 		# However, there are older uses of Option 161, so if there is
-! 		# no 'http' just skip it.
-! 		#
-! 		if ( $RAD_REQUEST{'Cisco-AVPair'}[$i] =~ 
-! 		    		/^dhcp-option=\000\241/ ) {
-! 		    	my $value = $RAD_REQUEST{'Cisco-AVPair'}[$i];
-! 			my $loc = index($value, "http");
-! 			if ( $loc != 0 ) {
-! 				$RAD_STATE{'Cisco-MUD-URL'} = 
-! 					substr($value, $loc);
-! 				radiusd::radlog(L_DBG, "Returning MUD URL from DHCP Option: $RAD_STATE{'Cisco-MUD-URL'}");
-! 				last;
-! 			}
-! 		}
-! 
-! 	    }
-! 	} else {
-! 		radiusd::radlog(L_DBG, "Cisco-AVPair not an array");
-! 	}
-! 		
-! 	#
-! 	# Return 'User-Name' in the session data, preferably from the
-! 	# Accounting message. If there is no 'User-Name' in the # accounting 
-! 	# message, then assume there was no authentication and fill it in from 
-! 	# the # "Calling-Station-Id" to emulate MAB.
-! 	#
-! 	# NOTE: This value is used instead of the 'User-Name' determined by
-! 	# FreeRADIUS, which for an accounting message is also likely to be the 
-! 	# 'User-Name' from the message.
-! 	#
-! 	if (not defined $RAD_REQUEST{'User-Name'}) {
-! 		if (defined $RAD_REQUEST{'Calling-Station-Id'}) {
-! 	    		#
-! 			# Remove the '-'s and change upper case to lower case.
-! 			#
-! 			my $username = $RAD_REQUEST{'Calling-Station-Id'} =~ s/-//gr;
-! 			$username = lc $username;
-! 			$RAD_STATE{'User-Name'} = $username;
-! 			radiusd::radlog(L_DBG, "Returning User-Name from 'Calling-Station-Id': $RAD_STATE{'User-Name'}");
-! 		}
-! 	} else {
-! 		$RAD_STATE{'User-Name'} = $RAD_REQUEST{'User-Name'};
-! 		radiusd::radlog(L_DBG, "Returning User-Name from 'Calling-Station-Id': $RAD_STATE{'User-Name'}");
-! 	}
-! 	    
   
++ 	if (not defined $RAD_REQUEST{'Cisco-AVPair'}) {
++ 		radiusd::radlog(L_DBG, "Cisco-AVPair not present");
++ 		return RLM_MODULE_OK;
++ 	}
++ 
++ 	if (ref($RAD_REQUEST{'Cisco-AVPair'}) eq 'ARRAY') {
++ 	    # 
++ 	    # The array is passed within a hash value, and there does not 
++ 	    # seem to be a way to get its size! Note that statements such
++ 	    # as 
++ 	    # 	my @values = values %RAD_REQUEST{'Cisco-AVPair'};
++ 	    # NO LONGER WORK as of Perl 5.28.
++ 	    #
++ 	    # So we loop through the array sequentially, assuming that 
++ 	    #   (a) There will be no more than 40 Cisco-AVPair values, and
++ 	    #   (b) the "method=" statement is the last one.
++ 	    #
++ 	    for (my $i=0; $i <=40; $i++) {
++ 	    	radiusd::radlog(L_DBG, "C-AV: $RAD_REQUEST{'Cisco-AVPair'}[$i]");
++ 			if ( $RAD_REQUEST{'Cisco-AVPair'}[$i] =~ /^method/ ) {
++ 	    		radiusd::radlog(L_DBG, "C-AV: End of List");
++ 			last;
++ 		}
++ 		#
++ 		# This finds a "vendor specific" LLDP TLV (type 127). It 
++ 		# may be a MUD URL, or may be some other TLV. To make sure
++ 		# it's a MUD URL, first check the IANA OUI and then find the
++ 		# 'http' string.
++ 		#
++ 		if ( $RAD_REQUEST{'Cisco-AVPair'}[$i] =~ /^lldp-tlv=\000\177/ ) {
++ 		    	my $value = $RAD_REQUEST{'Cisco-AVPair'}[$i];
++ 			if ($value =~ /\000\000\136\001http/) {
++ 				my $loc = index($value, "http");
++ 				$RAD_STATE{'Cisco-MUD-URL'} =  
++ 					substr($value, $loc);
++ 				radiusd::radlog(L_DBG, "Returning MUD URL from LLDP TLV: $RAD_STATE{'Cisco-MUD-URL'}");
++ 				last;
++ 	    		}
++ 		}
++ 		#
++ 		# This finds a DHCP Option 161, which should be a MUD URL.
++ 		# However, there are older uses of Option 161, so if there is
++ 		# no 'http' just skip it.
++ 		#
++ 		if ( $RAD_REQUEST{'Cisco-AVPair'}[$i] =~ 
++ 		    		/^dhcp-option=\000\241/ ) {
++ 		    	my $value = $RAD_REQUEST{'Cisco-AVPair'}[$i];
++ 			my $loc = index($value, "http");
++ 			if ( $loc != 0 ) {
++ 				$RAD_STATE{'Cisco-MUD-URL'} = 
++ 					substr($value, $loc);
++ 				radiusd::radlog(L_DBG, "Returning MUD URL from DHCP Option: $RAD_STATE{'Cisco-MUD-URL'}");
++ 				last;
++ 			}
++ 		}
++ 
++ 	    }
++ 	} else {
++ 	    #
++ 	    # There was a single Cisco-AVPair attribute
++ 	    #
++ 	    radiusd::radlog(L_DBG, "C-AV: $RAD_REQUEST{'Cisco-AVPair'}");
++ 
++ 	    #
++ 	    # Check to see if it's a MUD URL in LLDP.
++ 	    #
++ 	    if ( $RAD_REQUEST{'Cisco-AVPair'} =~ /^lldp-tlv=\000\177/ ) {
++ 	    	my $value = $RAD_REQUEST{'Cisco-AVPair'};
++ 		if ($value =~ /\000\000\136\001http/) {
++ 		    my $loc = index($value, "http");
++ 		    $RAD_STATE{'Cisco-MUD-URL'} =  substr($value, $loc);
++ 		    radiusd::radlog(L_DBG, "Returning MUD URL from LLDP TLV: $RAD_STATE{'Cisco-MUD-URL'}");
++ 	    	}
++ 	    #
++ 	    # Check to see if it's a MUD URL in DHCP.
++ 	    #
++ 	    } elsif ( $RAD_REQUEST{'Cisco-AVPair'} =~ /^dhcp-option=\000\241/ ){
++ 		my $value = $RAD_REQUEST{'Cisco-AVPair'};
++ 		my $loc = index($value, "http");
++ 		if ( $loc != 0 ) {
++ 		    $RAD_STATE{'Cisco-MUD-URL'} = substr($value, $loc);
++ 		    radiusd::radlog(L_DBG, "Returning MUD URL from DHCP Option: $RAD_STATE{'Cisco-MUD-URL'}");
++ 		}
++ 	    }
++ 	}
++ 		
++ 	#
++ 	# Return 'User-Name' in the session data, preferably from the
++ 	# Accounting message. If there is no 'User-Name' in the # accounting 
++ 	# message, then assume there was no authentication and fill it in from 
++ 	# the # "Calling-Station-Id" to emulate MAB.
++ 	#
++ 	# NOTE: This value is used instead of the 'User-Name' determined by
++ 	# FreeRADIUS, which for an accounting message is also likely to be the 
++ 	# 'User-Name' from the message.
++ 	#
++ 	if (defined $RAD_REQUEST{'User-Name'}) {
++ 		$RAD_STATE{'User-Name'} = $RAD_REQUEST{'User-Name'};
++ 		radiusd::radlog(L_DBG, "Returning User-Name from 'User-Name': $RAD_STATE{'User-Name'}");
++ 
++ 	} elsif (defined $RAD_REQUEST{'Calling-Station-Id'}) {
++ 	    	#
++ 		# Remove the '-'s and change upper case to lower case.
++ 		#
++ 		my $username = $RAD_REQUEST{'Calling-Station-Id'} =~ s/-//gr;
++ 		$username = lc $username;
++ 		$RAD_STATE{'User-Name'} = $username;
++ 		radiusd::radlog(L_DBG, "Returning User-Name from 'Calling-Station-Id': $RAD_STATE{'User-Name'}");
++ 	} else {
++ 		radiusd::radlog(L_DBG, "No User-Name returned");
++ 	}
++ 	    
   	return RLM_MODULE_OK;
   }
+  
 *** radiusd.conf	2018-07-30 15:49:20.494045794 -0700
 --- radiusd.conf	2018-07-30 14:49:51.847930824 -0700
 ***************
