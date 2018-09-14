@@ -107,7 +107,11 @@ Each MUD file is accompanied by a signature file that verifies that the MUD file
 
 #### authority
 
-The authority name of the URL, which defines the unique manufacturer.
+The authority portion of the URL, which defines the unique manufacturer. For
+example, if the URL is "https://luminaire.example.com/Luminaire_150", the
+authority portion of the URL is "luminaire.example.com". This same string
+needs to be placed in the authority policy of the Manufacturer in the
+configuration file.
 
 #### cert
 
