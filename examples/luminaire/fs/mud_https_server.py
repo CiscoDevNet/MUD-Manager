@@ -30,13 +30,13 @@ class Server(http.server.SimpleHTTPRequestHandler):
             try:
                 self.send_response(HTTPStatus.OK)
                 if is_signed:
-                    self.send_header("Content-Type", "application/pkcs7-signed")
+                    self.send_header("Content-Type", "application/pkcs7-signature")
                 else:
                     self.send_header("Content-Type", "application/mud+json")
                 self.end_headers()
                 self.wfile.write(b'MIME-Version: 1.0\n')
                 if is_signed:
-                    self.wfile.write(b'Content-Type: application/pkcs7-signed\n')
+                    self.wfile.write(b'Content-Type: application/pkcs7-signature\n')
                 else:
                     self.wfile.write(b'Content-Type: application/mud+json\n') 
                 self.wfile.write(b'\n')

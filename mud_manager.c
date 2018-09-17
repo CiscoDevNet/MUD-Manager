@@ -1995,7 +1995,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     /*
      * Fetch the signature file and verify the signature.
      */
-    response = fetch_file(curl, requri, &response_len, "pkcs7-signed",
+    response = fetch_file(curl, requri, &response_len, "pkcs7-signature",
 	    		  manuf_list[manuf_idx].certfile);
     curl_easy_cleanup(curl);
     curl = NULL;

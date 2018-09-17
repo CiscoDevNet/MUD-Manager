@@ -77,10 +77,45 @@ static size_t validateheaders(void *ptr, size_t size, size_t nmemb,
      	 * Verify that the retrieved content-type is the expected one.
      	 */
 	if (strncmp(contenttype, header, strlen(header))) {
-	    MUDC_LOG_INFO("contenttype=%sXXX\n", contenttype);
-	    MUDC_LOG_INFO("header=%sXXX\n", header);
-	    MUDC_LOG_ERR(" Unexpected Content-Type: %s\n", contenttype);
-	    ret = 0;
+	    /*
+	     * Oops, the header is not the expected one.
+	     *
+	     * The web server might not know about the new Content-Type
+	     * strings defined for MUD, so accept approximately-correct
+	     * responses with a warning.
+	     */
+	    if (strstr(contenttype, "json")) {
+	    	if (strstr(header, "json")) {
+	    	    MUDC_LOG_INFO("Warning: Web server sent unexpected (but "
+			          "similar) Content-Type.");
+	    	    MUDC_LOG_INFO("    expected=%s\n", contenttype);
+	    	    MUDC_LOG_INFO("    returned=%s\n", header);
+	    	} else {
+	    	    MUDC_LOG_ERR("Error: Web server sent unexpected "
+			          "Content-Type.");
+	    	    MUDC_LOG_ERR("    expected=%s\n", contenttype);
+	    	    MUDC_LOG_ERR("    returned=%s\n", header);
+		    ret = 0;
+		}
+	    } else if (strstr(contenttype, "pkcs7")) {
+	    	if (strstr(header, "pkcs7")) {
+	    	    MUDC_LOG_INFO("Warning: Web server sent unexpected (but "
+			          "similar) Content-Type.");
+	    	    MUDC_LOG_INFO("    expected=%s\n", contenttype);
+	    	    MUDC_LOG_INFO("    returned=%s\n", header);
+	    	} else {
+	    	    MUDC_LOG_ERR("Error: Web server sent unexpected "
+			          "Content-Type.");
+	    	    MUDC_LOG_ERR("    expected=%s\n", contenttype);
+	    	    MUDC_LOG_ERR("    returned=%s\n", header);
+		    ret = 0;
+		}
+	    } else {
+	    	MUDC_LOG_ERR("Error: Web server sent unexpected Content-Type.");
+	    	MUDC_LOG_ERR("    expected=%s\n", contenttype);
+	    	MUDC_LOG_ERR("    returned=%s\n", header);
+		ret = 0;
+	    }
 	}
     }
 
@@ -128,7 +163,7 @@ char *fetch_file(CURL *curl, char *get_url,
         headers = curl_slist_append(headers, "Accept: application/mud+json");
     } else if (strstr(get_url, ".p7s")) {
         headers = curl_slist_append(headers, 
-				    "Accept: application/pkcs7-signed");
+				    "Accept: application/pkcs7-signature");
     } else {
 	MUDC_LOG_ERR("Request is not a .json file or signature file\n");
 	return NULL;
