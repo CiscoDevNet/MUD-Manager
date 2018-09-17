@@ -1966,7 +1966,6 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     memcpy(ctx->orig_mud, response + i, ctx->orig_mud_len);
     free(response);
     response = NULL;
-    MUDC_LOG_INFO("Saved MUD file:<%s>\n", ctx->orig_mud);
 
     /* 
      * Determine the signature file URL. it's returned in requri.
