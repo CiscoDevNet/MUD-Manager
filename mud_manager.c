@@ -1443,11 +1443,11 @@ int verify_mud_content(char* smud, int slen, char* omud, int olen)
     STACK_OF(PKCS7_SIGNER_INFO) *sinfos=NULL;
     PKCS7_SIGNER_INFO *sitmp=NULL;
     CMS_ContentInfo *cms = NULL;
-    int i=0, j=0, loc=0, found_ca = -1, ret = 0;
+    int i=0, j=0, loc=0, found_ca = -1, ret = -1;
 
     if (smud == NULL || slen <= 0 || omud == NULL || olen <= 0) {
         MUDC_LOG_ERR("invalid parameters");
-        return -1;
+        return ret;
     }
 
     smud_bio=BIO_new_mem_buf(smud, slen);
@@ -1529,7 +1529,7 @@ err:
     BIO_free(out);
     BIO_free(smud_bio);
     BIO_free(omud_bio);
-    return found_ca;
+    return ret;
 }
 
 
@@ -1947,20 +1947,17 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     MUDC_LOG_INFO("MUD file: %s\n", response);
 #endif
 
-    /*
-     * Remove MIME headers.
+    /* 
+     * There may be MIME headers. Look for the opening JSON "{".
      */
     for (i=0; i<response_len-1; i++) {
-    	if (response[i] == '\n' && response[i+1] == '\n') {
-            if ((response_len - i) > 2) {
-        	found = true;
-                i+=2;
-                break;
-            }
+    	if (response[i] == '{') {
+            found = true;
+            break;
         }
     }
     if (!found) {
-    	MUDC_LOG_ERR("Failed to strip off MIME header");
+    	MUDC_LOG_ERR("Failed to find JSON");
         send_error_for_context(ctx, 500, NULL);
         goto err;
     }
@@ -1969,6 +1966,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     memcpy(ctx->orig_mud, response + i, ctx->orig_mud_len);
     free(response);
     response = NULL;
+    MUDC_LOG_INFO("Saved MUD file:<%s>\n", ctx->orig_mud);
 
     /* 
      * Determine the signature file URL. it's returned in requri.
@@ -2008,19 +2006,18 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
 
     found = false;
     /*
-     * Remove MIME headers.
+     * There may be MIME headers. Look for the beginning of the ASN.1. We'll
+     * assume that a 0x30 followed by any value (length) followed by 0x03 is
+     * what we want.
      */
-    for (i=0; i<response_len-1; i++) {
-    	if (response[i] == '\n' && response[i+1] == '\n') {
-            if ((response_len - i) > 2) {
-        	found = true;
-                i+=2;
-                break;
-            }
+    for (i=0; i<response_len-2; i++) {
+    	if (response[i] == 0x30 && response[i+2] == 0x03) {
+            found = true;
+            break;
         }
     }
     if (!found) {
-    	MUDC_LOG_ERR("Failed to strip off MIME header");
+    	MUDC_LOG_ERR("Failed to find signature");
         send_error_for_context(ctx, 500, NULL);
         goto err;
     }
