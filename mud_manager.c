@@ -1196,6 +1196,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	     */
             if ((acllist[acl_index].ace[ace_index].matches.dnsname == NULL) 
 		    && !is_vlan) {
+                 MUDC_LOG_ERR("ACL: %d, ACE: %d\n", acl_index, ace_index);
                  MUDC_LOG_ERR("Missing Host or Controller name \n");
                  goto err;
              }
@@ -2045,7 +2046,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
             cJSON_Delete(masa_json);
         }
     } else {
-        parsed_json = parse_mud_content(ctx, ret);
+        parsed_json = parse_mud_content(ctx, manuf_idx);
         if (!parsed_json) {
             MUDC_LOG_ERR("Error in parsing MUD file\n");
             send_error_for_context(ctx, 500, NULL);
