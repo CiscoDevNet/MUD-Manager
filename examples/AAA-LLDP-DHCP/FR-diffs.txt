@@ -245,8 +245,8 @@
   	#  chroot: directory where the server does "chroot".
   	#
   	#  The chroot is done very early in the process of starting
-*** sites-available/default	2018-04-17 10:12:27.000000000 -0700
---- sites-available/default	2018-09-10 19:41:09.198163244 -0700
+*** sites-available/default	2018-09-12 16:56:15.616214173 -0700
+--- sites-available/default	2018-09-17 21:19:51.639413041 -0700
 ***************
 *** 280,285 ****
 --- 280,311 ----
@@ -374,11 +374,11 @@
 ! 		
 ! 	# This allows FreeFADIUS to recognize a MUD URI delivered in an X.509
 ! 	# certificate.
-! 	} elsif (&session-state:TLS-Client-Cert-1.3.6.1.5.5.7.1.25) {
+! 	} elsif (TLS-Client-Cert-1.3.6.1.5.5.7.1.25) {
 ! 		update {
 ! 			&Url-Name := "getaclname"
 ! 			&Url-DataType := "MUD_URI"
-! 			&Url-Data :="%{session-state:TLS-Client-Cert-1.3.6.1.5.5.7.1.25}"
+! 			&Url-Data :="%{TLS-Client-Cert-1.3.6.1.5.5.7.1.25}"
 ! 		}
 ! 		rest
 ! 		
