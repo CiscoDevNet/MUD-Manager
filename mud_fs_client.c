@@ -88,32 +88,32 @@ static size_t validateheaders(void *ptr, size_t size, size_t nmemb,
 	    	if (strstr(header, "json")) {
 	    	    MUDC_LOG_INFO("Warning: Web server sent unexpected (but "
 			          "similar) Content-Type.");
-	    	    MUDC_LOG_INFO("    expected=%s\n", contenttype);
-	    	    MUDC_LOG_INFO("    returned=%s\n", header);
+	    	    MUDC_LOG_INFO("    expected=%s\n", header);
+	    	    MUDC_LOG_INFO("    returned=%s\n", contenttype);
 	    	} else {
 	    	    MUDC_LOG_ERR("Error: Web server sent unexpected "
 			          "Content-Type.");
-	    	    MUDC_LOG_ERR("    expected=%s\n", contenttype);
-	    	    MUDC_LOG_ERR("    returned=%s\n", header);
+	    	    MUDC_LOG_ERR("    expected=%s\n", header);
+	    	    MUDC_LOG_ERR("    returned=%s\n", contenttype);
 		    ret = 0;
 		}
 	    } else if (strstr(contenttype, "pkcs7")) {
 	    	if (strstr(header, "pkcs7")) {
 	    	    MUDC_LOG_INFO("Warning: Web server sent unexpected (but "
 			          "similar) Content-Type.");
-	    	    MUDC_LOG_INFO("    expected=%s\n", contenttype);
-	    	    MUDC_LOG_INFO("    returned=%s\n", header);
+	    	    MUDC_LOG_INFO("    expected=%s\n", header);
+	    	    MUDC_LOG_INFO("    returned=%s\n", contenttype);
 	    	} else {
 	    	    MUDC_LOG_ERR("Error: Web server sent unexpected "
 			          "Content-Type.");
-	    	    MUDC_LOG_ERR("    expected=%s\n", contenttype);
-	    	    MUDC_LOG_ERR("    returned=%s\n", header);
+	    	    MUDC_LOG_ERR("    expected=%s\n", header);
+	    	    MUDC_LOG_ERR("    returned=%s\n", contenttype);
 		    ret = 0;
 		}
 	    } else {
 	    	MUDC_LOG_ERR("Error: Web server sent unexpected Content-Type.");
-	    	MUDC_LOG_ERR("    expected=%s\n", contenttype);
-	    	MUDC_LOG_ERR("    returned=%s\n", header);
+	    	MUDC_LOG_ERR("    expected=%s\n", header);
+	    	MUDC_LOG_ERR("    returned=%s\n", contenttype);
 		ret = 0;
 	    }
 	}

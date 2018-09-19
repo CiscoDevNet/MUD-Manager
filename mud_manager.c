@@ -2031,7 +2031,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     ret = verify_mud_content(ctx->signed_mud, ctx->signed_mud_len, 
 	    		     ctx->orig_mud, ctx->orig_mud_len);
     if (ret == -1) {
-    	MUDC_LOG_INFO("Verification failed. Manufacturer Index <%d>\n", ret);
+    	MUDC_LOG_INFO("Verification failed. Manufacturer Index <%d>\n", manuf_idx);
         send_error_for_context(ctx, 401, "Verification failed"); 
         goto err;
     }
