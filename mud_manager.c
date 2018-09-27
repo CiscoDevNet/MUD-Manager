@@ -86,7 +86,9 @@ typedef struct _manufacturer_list {
     char* authority;
     char* https_port;
     char* certfile;
+    char* web_certfile;
     X509 *cert;
+    X509 *web_cert;
     int vlan;
     char* my_ctrl_v4;
     char* my_ctrl_v6;
@@ -138,12 +140,6 @@ status_code, content_len, extra_headers);
     return true;
 }
 
-#define MUDC_WRITE_DATA(nc, format, args ...) do { \
-    MUDC_LOG_INFO(format, ##args); \
-    mg_printf(nc, format, ##args); \
-} while (0)
-
-
 static void send_error_result(struct mg_connection *nc, int status, const char *msg) 
 {
     int response_len = 0;
@@ -161,7 +157,7 @@ static void send_error_result(struct mg_connection *nc, int status, const char *
 
     response_len = strlen(msg);
     mudc_construct_head(nc, status, response_len, NULL);
-    MUDC_WRITE_DATA(nc, "%.*s", response_len, msg);
+    MUDC_LOG_WRITE_DATA(nc, "%.*s", response_len, msg);
 }
 
 static void send_error_for_context(request_context *ctx, int status, 
@@ -178,71 +174,6 @@ static void send_error_for_context(request_context *ctx, int status,
 
     send_error_result(ctx->in, status, msg);
 }
-
-static int cmp_sk_ak(X509_EXTENSION *sk, X509_EXTENSION *ak) 
-{
-    int ret=-1;
-    BIO *sk_bio=NULL, *ak_bio=NULL;
-    BUF_MEM *sk_bptr=NULL, *ak_bptr=NULL;
-    char *sk_buf=NULL, *ak_buf=NULL;
-
-    if((ak==NULL)||(sk==NULL)) {
-        goto err;
-    } else {
-        sk_bio = BIO_new(BIO_s_mem());
-        ak_bio = BIO_new(BIO_s_mem());
-
-        if(!X509V3_EXT_print(sk_bio, sk, 0, 0)){
-            // error handling...
-            MUDC_LOG_ERR("Error copying SK in BIO");
-            goto err;
-        }
-        BIO_get_mem_ptr(sk_bio, &sk_bptr);
-        if(!X509V3_EXT_print(ak_bio, ak, 0, 0)){
-            // error handling...
-            MUDC_LOG_ERR("Error copying AK in BIO");
-            goto err;
-        }
-        BIO_get_mem_ptr(ak_bio, &ak_bptr);
-
-        if (sk_bptr == NULL || ak_bptr == NULL) {
-            MUDC_LOG_ERR("BIO error");
-            goto err;
-        }
-
-        sk_buf = (char *)calloc( (sk_bptr->length + 1),sizeof(char) );
-        ak_buf = (char *)calloc( (ak_bptr->length + 1),sizeof(char) );
-
-        if (sk_buf == NULL || ak_buf == NULL) {
-            MUDC_LOG_ERR("malloc err");
-            goto err;
-        }
-        memcpy(sk_buf, sk_bptr->data, sk_bptr->length);
-        memcpy(ak_buf, ak_bptr->data+6, ak_bptr->length-7);
-
-        sk_buf[sk_bptr->length] = '\0';
-        ak_buf[ak_bptr->length-7] = '\0';
-
-        // Now you can printf it or parse it, the way you want...
-        MUDC_LOG_INFO("SK:[%s]\nAK:[%s]", sk_buf, ak_buf);
-        ret = strcmp(sk_buf, ak_buf);
-    }
-err:
-    if (sk_bio) {
-        BIO_free_all(sk_bio);
-    }
-    if (ak_bio) {
-        BIO_free_all(ak_bio);
-    }
-    if (sk_buf) {
-        free(sk_buf);
-    }
-    if (ak_buf) {
-        free(ak_buf);
-    }
-    return ret;
-}
-
 
 static int read_mudmgr_config (char* filename) 
 {
@@ -325,6 +256,33 @@ static int read_mudmgr_config (char* filename)
                         goto err;
                     }
 
+		    /*
+		     * There may be a different CA certification for the web
+		     * server. This is optional.
+		     */
+                    cacert_json = cJSON_GetObjectItem(tmp_json, "web_cert");
+                    if (cacert_json != NULL) {
+                        manuf_list[i].web_certfile = GETSTR_JSONOBJ(tmp_json, "web_cert");
+                        if (manuf_list[i].web_certfile != NULL) {
+                            certin = BIO_new_file(manuf_list[i].web_certfile, "r");
+                            if (certin != NULL) {
+                                manuf_list[i].web_cert = PEM_read_bio_X509(certin, NULL, NULL, NULL);
+                                BIO_free(certin);
+                                if (manuf_list[i].web_cert != NULL) {
+                                    MUDC_LOG_INFO("Successfully read Manufacture web %d cert", i);
+                                } else {
+                                    MUDC_LOG_ERR("Missing Web CA certificate: Failed reading cert");
+                                    goto err;
+                                }
+                            } else {
+                                MUDC_LOG_ERR("Missing Web CA certificate: Certificate file missing");
+                                goto err;
+                            }
+                        } else {
+                            MUDC_LOG_ERR("Missing Web CA certificate: JSON Entry missing");
+                            goto err;
+                        }
+		    };
                     manuf_list[i].vlan = GETINT_JSONOBJ(tmp_json, "vlan");
                     manuf_list[i].authority= GETSTR_JSONOBJ(tmp_json, "authority");
                     manuf_list[i].https_port = GETSTR_JSONOBJ(tmp_json, "https_port");
@@ -1367,7 +1325,7 @@ static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, boo
         MUDC_LOG_INFO("Response <%s>\n", response_str);
 
         mudc_construct_head(nc, ret, response_len, reply_type);
-        MUDC_WRITE_DATA(nc, "%.*s", response_len, response_str);
+        MUDC_LOG_WRITE_DATA(nc, "%.*s", response_len, response_str);
         free(response_str);
     } else if (query_only) {
         goto end;
@@ -1379,7 +1337,7 @@ static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, boo
         response_str = "{\"MSG\":\"No ACL for this MUD URL\"}";
         response_len = strlen(response_str);
         mudc_construct_head(nc, ret, response_len, reply_type);
-        MUDC_WRITE_DATA(nc, "%.*s", response_len, response_str);
+        MUDC_LOG_WRITE_DATA(nc, "%.*s", response_len, response_str);
     }
 
 end:
@@ -1434,71 +1392,71 @@ void start_session (struct mg_connection *nc,
     return;
 }
 
-int verify_mud_content(char* smud, int slen, char* omud, int olen) 
+int verify_mud_content(char* smud, int slen, char* omud, int olen,
+		       int manuf_index) 
 {
     BIO *smud_bio=NULL, *omud_bio=NULL, *out=NULL;
     X509_STORE *st = NULL;
-    X509 *cacert = NULL, *cert=NULL;
-    X509_EXTENSION *ak_ext=NULL, *sk_ext=NULL;
+    X509 *cacert = NULL;
     PKCS7 *p7 = NULL;
-    STACK_OF(PKCS7_SIGNER_INFO) *sinfos=NULL;
-    PKCS7_SIGNER_INFO *sitmp=NULL;
     CMS_ContentInfo *cms = NULL;
-    int i=0, j=0, loc=0, found_ca = -1, ret = -1;
+    int ret = -1;
+    X509_LOOKUP *lookup;
 
     if (smud == NULL || slen <= 0 || omud == NULL || olen <= 0) {
         MUDC_LOG_ERR("invalid parameters");
         return ret;
     }
 
+    MUDC_LOG_DEBUG_HEX("MUD signature file", smud, slen);
+
     smud_bio=BIO_new_mem_buf(smud, slen);
     omud_bio=BIO_new_mem_buf(omud, olen);
 
+    /*
+     * Validate that we have a correctly formed PKC7 object.
+     */
     p7 = d2i_PKCS7_bio(smud_bio, NULL);
     if (!p7) {
         MUDC_LOG_ERR("Error reading PKCS7 format\n");
         goto err;
-    }
-    
-    sinfos = PKCS7_get_signer_info(p7);
-    for(i=0; i < sk_PKCS7_SIGNER_INFO_num(sinfos); i++) {
-        sitmp = sk_PKCS7_SIGNER_INFO_value(sinfos, i);
-        cert = PKCS7_cert_from_signer_info(p7, sitmp);
-        loc = X509_get_ext_by_NID(cert, NID_authority_key_identifier, -1);
-        ak_ext = X509_get_ext(cert, loc);
-        if (ak_ext) {
-            for (j=0; j < num_manu; j++) {
-                loc = X509_get_ext_by_NID(manuf_list[j].cert, NID_subject_key_identifier,-1);
-                sk_ext = X509_get_ext(manuf_list[j].cert, loc);
-                if (!cmp_sk_ak(sk_ext, ak_ext)) {
-                    if (found_ca == -1) {
-                        found_ca = j;
-                        MUDC_LOG_INFO("Found Manufaturer CA.  Manufacturer id <%d>\n", found_ca);
-                    } else if (found_ca != j) {
-                        MUDC_LOG_ERR("Error in finding the Manufacturer certificate\n");
-                        goto err;
-                    }
-                }
-            }
-            if (found_ca == -1) {
-                MUDC_LOG_ERR("No matching Manufacturer certificate\n");
-                goto err;
-            }
-        } else {
-            MUDC_LOG_ERR("Missing Authority Key Identifier\n");
-            goto err;
-        }
-    }
-    if (p7) {
+    } else {
         PKCS7_free(p7);
         p7 = NULL;
     }
+   
+    /*
+     * We need to make sure we have the right CA certificate. We assume that
+     * any additional certificates needing verification  (e.g., intermediate 
+     * CAs) will be included in the CMS structure, or are in a lookup path.
+     */
 
-    /* Set up trusted CA certificate store */
+    /* 
+     * Set up trusted CA certificate store. Populate it with the given CA
+     * certificate, and the standard OpenSSL "lookup" directory. The latter
+     * seems to be needed when the CA is not a self-signed CA.
+     */
     st = X509_STORE_new();
 
-    if (!X509_STORE_add_cert(st, manuf_list[found_ca].cert))
-        goto err;
+    lookup = X509_STORE_add_lookup(st, X509_LOOKUP_file());
+    if (lookup == NULL) {
+	MUDC_LOG_ERR("Could not setup lookup file");
+        ERR_print_errors_fp(stdout);
+	goto err;
+    }
+    if (!X509_LOOKUP_load_file(lookup, manuf_list[manuf_index].certfile, 
+			       X509_FILETYPE_PEM)) {
+	MUDC_LOG_INFO("X509_LOOKUP failed. Aborting.");
+        ERR_print_errors_fp(stdout);
+	goto err;
+     }
+    lookup = X509_STORE_add_lookup(st, X509_LOOKUP_hash_dir());
+    if (lookup == NULL) {
+	MUDC_LOG_ERR("Could not setup lookup path");
+        ERR_print_errors_fp(stdout);
+	goto err;
+    }
+    X509_LOOKUP_add_dir(lookup, NULL, X509_FILETYPE_DEFAULT);
 
     int tmp=BIO_reset(smud_bio);
     MUDC_LOG_INFO("BIO_reset <%d>\n", tmp);
@@ -1506,11 +1464,13 @@ int verify_mud_content(char* smud, int slen, char* omud, int olen)
     cms = d2i_CMS_bio(smud_bio, NULL);
     if (!cms) {
         MUDC_LOG_ERR("Error in d2i_CMS_bio\n");
+        ERR_print_errors_fp(stdout);
         goto err;
     }
 
     if (!CMS_verify(cms, NULL, st, omud_bio, out, CMS_BINARY|CMS_DETACHED)) {
         MUDC_LOG_ERR("Verification Failure\n");
+        ERR_print_errors_fp(stdout);
         goto err;
     }
 
@@ -1521,9 +1481,7 @@ err:
         MUDC_LOG_ERR("Error Verifying Data");
         ERR_print_errors_fp(stdout);
     }
-    if (p7) {
-        PKCS7_free(p7);
-    }
+    
     CMS_ContentInfo_free(cms);
     X509_free(cacert);
     X509_STORE_free(st);
@@ -1675,7 +1633,7 @@ void send_masauri_response(struct mg_connection *nc, cJSON *response_json)
     response_len = strlen(response_str);
     MUDC_LOG_INFO("Response <%s>\n", response_str);
     mudc_construct_head(nc, 200, response_len, "Content-Type: application/masauri");
-    MUDC_WRITE_DATA(nc, "%.*s", response_len, response_str);
+    MUDC_LOG_WRITE_DATA(nc, "%.*s", response_len, response_str);
     free(response_str);
 }
 
@@ -1709,7 +1667,7 @@ void send_response(struct mg_connection *nc, cJSON *parsed_json)
     response_len = strlen(response_str);
     MUDC_LOG_INFO("Response <%s> <%d>\n", response_str, response_len);
     mudc_construct_head(nc, 200, response_len, "Content-Type: application/aclname");
-    MUDC_WRITE_DATA(nc, "%s", response_str);
+    MUDC_LOG_WRITE_DATA(nc, "%s", response_str);
 
     if (response_str) {
         free(response_str);
@@ -1868,9 +1826,9 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     char *response=NULL;
     int response_len = 0;
     int i=0;
-    bool found=false;
     int ret=0;
     cJSON *parsed_json=NULL, *masa_json=NULL;
+    char *webcacert;
 
     if (nc == NULL || base_uri == NULL) {
         MUDC_LOG_ERR("invalid parameters");
@@ -1919,13 +1877,23 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
  	send_error_for_context(ctx, 500, NULL);
         goto err;
     }
+    
+    if (manuf_list[manuf_idx].web_certfile) {
+	webcacert = manuf_list[manuf_idx].web_certfile;
+    } else {
+	webcacert = manuf_list[manuf_idx].certfile;
+    }
 
     create_requri(ctx->uri, requri, manuf_idx, ".json");
 
-    MUDC_LOG_INFO("Request URI <%s> <%s>\n", requri, manuf_list[manuf_idx].certfile);
+    /*
+     * The message below isn't an error, but it gives context to the libcurl
+     * messages and CoA messages, which aren't so easily suppressed.
+     */
+    MUDC_LOG_STATUS("\nRequest URI <%s> <%s>\n", requri, webcacert);
 
     response = fetch_file(curl, requri, &response_len, "mud+json",
-	    		  manuf_list[manuf_idx].certfile);
+	    		  webcacert);
     /*
      * Use a new session each time for expediency. This is necessary because
      * if the server is HTTP 1.0, it will close the connection after each
@@ -1942,27 +1910,10 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     }
 
     MUDC_LOG_INFO("MUD file successfully retrieved");
-#if 0
-    /* Enable with a new command line option enabling verbose logging. */
-    /* Check return */
-    MUDC_LOG_INFO("MUD file: %s\n", response);
-#endif
 
-    /* 
-     * There may be MIME headers. Look for the opening JSON "{".
-     */
-    for (i=0; i<response_len-1; i++) {
-    	if (response[i] == '{') {
-            found = true;
-            break;
-        }
-    }
-    if (!found) {
-    	MUDC_LOG_ERR("Failed to find JSON");
-        send_error_for_context(ctx, 500, NULL);
-        goto err;
-    }
-    ctx->orig_mud_len = response_len - i;
+    MUDC_LOG_DEBUG_HEX("MUD file", response, response_len);
+    
+    ctx->orig_mud_len = response_len;
     ctx->orig_mud = calloc(ctx->orig_mud_len+1, sizeof(char));
     memcpy(ctx->orig_mud, response + i, ctx->orig_mud_len);
     free(response);
@@ -1981,8 +1932,11 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
  	send_error_for_context(ctx, 500, NULL);
         goto err;
     }
-    MUDC_LOG_INFO("Request signature URI <%s> <%s>\n", requri, 
-	          manuf_list[manuf_idx].certfile);
+    /*
+     * The message below isn't an error, but it gives context to the libcurl
+     * messages and CoA messages, which aren't so easily suppressed.
+     */
+    MUDC_LOG_STATUS("\nRequest signature URI <%s> <%s>\n", requri, webcacert);
    
     curl = curl_easy_init();
     if (curl == NULL) {
@@ -1994,7 +1948,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
      * Fetch the signature file and verify the signature.
      */
     response = fetch_file(curl, requri, &response_len, "pkcs7-signature",
-	    		  manuf_list[manuf_idx].certfile);
+	    		  webcacert);
     curl_easy_cleanup(curl);
     curl = NULL;
     if (response == NULL) {
@@ -2004,23 +1958,6 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     }
     MUDC_LOG_INFO("MUD signature file successfully retrieved");
 
-    found = false;
-    /*
-     * There may be MIME headers. Look for the beginning of the ASN.1. We'll
-     * assume that a 0x30 followed by any value (length) followed by 0x03 is
-     * what we want.
-     */
-    for (i=0; i<response_len-2; i++) {
-    	if (response[i] == 0x30 && response[i+2] == 0x03) {
-            found = true;
-            break;
-        }
-    }
-    if (!found) {
-    	MUDC_LOG_ERR("Failed to find signature");
-        send_error_for_context(ctx, 500, NULL);
-        goto err;
-    }
     ctx->signed_mud_len = response_len - i;
     ctx->signed_mud = calloc(ctx->signed_mud_len, sizeof(char));
     memcpy(ctx->signed_mud, response + i, ctx->signed_mud_len);
@@ -2029,7 +1966,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
 
     /* Check response */
     ret = verify_mud_content(ctx->signed_mud, ctx->signed_mud_len, 
-	    		     ctx->orig_mud, ctx->orig_mud_len);
+	    		     ctx->orig_mud, ctx->orig_mud_len, manuf_idx);
     if (ret == -1) {
     	MUDC_LOG_INFO("Verification failed. Manufacturer Index <%d>\n", manuf_idx);
         send_error_for_context(ctx, 401, "Verification failed"); 
@@ -2221,7 +2158,7 @@ static int handle_get_acl_policy(struct mg_connection *nc,
     MUDC_LOG_INFO("\nResponse: %s\n", response_str);
     response_len = strlen(response_str);
     mudc_construct_head(nc, 200, response_len, "Content-Type: application/dacl");
-    MUDC_WRITE_DATA(nc, "%.*s", response_len, response_str);
+    MUDC_LOG_WRITE_DATA(nc, "%.*s", response_len, response_str);
     free(response_str);
 err:
     cJSON_Delete(jsonResponse);
@@ -2491,7 +2428,7 @@ static int handle_get_aclname(struct mg_connection *nc,
         char *response_str = "{\"MSG\":\"No ACL for this device MAC Address\"}";
         int response_len = strlen(response_str);
         mudc_construct_head(nc, ret, response_len, reply_type);
-        MUDC_WRITE_DATA(nc, "%.*s", response_len, response_str);
+        MUDC_LOG_WRITE_DATA(nc, "%.*s", response_len, response_str);
 
         MUDC_LOG_INFO("No URL found for Mac address <%s> \n", mac_addr);
         MUDC_LOG_INFO("    and no MUD URL was provided.");

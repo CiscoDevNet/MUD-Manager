@@ -34,12 +34,6 @@ class Server(http.server.SimpleHTTPRequestHandler):
                 else:
                     self.send_header("Content-Type", "application/mud+json")
                 self.end_headers()
-                self.wfile.write(b'MIME-Version: 1.0\n')
-                if is_signed:
-                    self.wfile.write(b'Content-Type: application/pkcs7-signature\n')
-                else:
-                    self.wfile.write(b'Content-Type: application/mud+json\n') 
-                self.wfile.write(b'\n')
                 self.wfile.write(stuff)
                 print("Response is sent")
             except:
