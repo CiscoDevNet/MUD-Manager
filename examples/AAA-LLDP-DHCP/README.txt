@@ -66,7 +66,7 @@ and use the "secret" configured on the NAS to talk to RADIUS servers.
 
 6. Start up the MUD Manager (e.g., using the luminaire example).
 
-NOTE: If ths MUD Manager is not listening on its socket, FreeRADIUS won't 
+NOTE: If the MUD Manager is not listening on its socket, FreeRADIUS won't 
       start properly.
 
 7. Start the RADIUS server. It's helpful to start it in the foreground and
@@ -74,3 +74,18 @@ watch the messages
 
 	sudo radiusd -Xxx
 
+8. If you have installed the luminair example,the following script will
+verify that FreeRADIUS and the MUD Manager are communicating properly.
+
+	./kick_radius.sh
+
+You should see something like the following displayed:
+
+Sent Accounting-Request Id XX from 0.0.0.0:57752 to 127.0.0.1:1813 length 118
+Received Accounting-Response Id XX from 127.0.0.1:1813 to 127.0.0.1:57752 length 73
+
+The FreeRADIUS log should have lines something like the following:
+
+<date>  Debug: (0) Sent Accounting-Response Id XX from 127.0.0.1:1813 to 127.0.0.1:57752 length 0
+<date>  Debug: (0)   Cisco-AVPair = "ACS:CiscoSecure-Defined-ACL=mud-21966-v4fr.in"
+<date>  Debug: (0) Finished request
