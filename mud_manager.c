@@ -1332,11 +1332,7 @@ static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, boo
     } else if (found_uri) {
         // uri in database w/o ACLs
         // return success so that FR does not reject auth
-        ret = 204;
-        reply_type = "Content-Type: application/aclname";
-        response_str = "{\"MSG\":\"No ACL for this MUD URL\"}";
-        response_len = strlen(response_str);
-        mudc_construct_head(nc, ret, response_len, reply_type);
+        send_error_result(nc, 204, "{\"MSG\":\"No ACL for this MUD URL\"}");
         MUDC_LOG_WRITE_DATA(nc, "%.*s", response_len, response_str);
     }
 
@@ -1874,7 +1870,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     manuf_idx = find_manufacturer(ctx->uri);
     if (manuf_idx == -1) {
         MUDC_LOG_ERR("Manufacturer not found: URI %s\n", requri);
- 	send_error_for_context(ctx, 500, NULL);
+        send_error_result(nc, 204, "{\"MSG\":\"No ACL for this device\"}");
         goto err;
     }
     
@@ -1905,7 +1901,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     curl = NULL;
     if (response == NULL) {
         MUDC_LOG_ERR("Unable to reach MUD fileserver to fetch .json file");
- 	send_error_for_context(ctx, 404, "error from FS\n");
+ 	send_error_for_context(ctx, 204, "error from FS\n");
         goto err;
     }
 
@@ -2235,6 +2231,7 @@ static int handle_coa_alert(struct mg_connection *nc,
     return 1;
 }
 
+
 static bool validate_muduri (struct mg_connection *nc, char *uri) 
 {
     char *buf = NULL;
@@ -2423,13 +2420,7 @@ static int handle_get_aclname(struct mg_connection *nc,
 	 *
 	 * TBD: Put in a function.
 	 */
-        int ret = 204;
-        char *reply_type = "Content-Type: application/aclname";
-        char *response_str = "{\"MSG\":\"No ACL for this device MAC Address\"}";
-        int response_len = strlen(response_str);
-        mudc_construct_head(nc, ret, response_len, reply_type);
-        MUDC_LOG_WRITE_DATA(nc, "%.*s", response_len, response_str);
-
+        send_error_result(nc, 204, "{\"MSG\":\"No ACL for this device MAC Address\"}");
         MUDC_LOG_INFO("No URL found for Mac address <%s> \n", mac_addr);
         MUDC_LOG_INFO("    and no MUD URL was provided.");
         goto end;
