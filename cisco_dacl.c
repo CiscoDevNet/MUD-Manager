@@ -174,7 +174,16 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
 		    acllist[index].ace[ace_index].num_ace--;
                     ace_index--;
                 } else {
-                    ace_ptr += sprintf(ace_ptr, " established");
+		  /* do not ever apply ESTABLISHED on ingress ACLs */
+		  if (acllist[index].pak_direction == INGRESS) {
+		    if (direction == INGRESS_ONLY_ACL)
+		      ace_ptr += sprintf(ace_ptr, " syn ack"); /* if we are doing ingress only
+							        * ACLs the best we can do is block
+								* on syn acks on ingress.
+							        */
+
+		  } else
+                      ace_ptr += sprintf(ace_ptr, " established");
                 }
             }
             MUDC_LOG_INFO("ACE Ptr: %s", ace_str);
