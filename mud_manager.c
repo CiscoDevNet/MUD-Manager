@@ -1120,10 +1120,10 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		if ((ctrl_json=cJSON_GetObjectItem(tmp_json, "local-networks"))){
                      MUDC_LOG_INFO("local-network  is V4 <%d>\n", is_v6);
                      if (is_v6) {
-                         acllist[acl_index].ace[ace_index].matches.dnsname = 
+                         acllist[acl_index].ace[ace_index].matches.addrmask = 
 			     manuf_list[manuf_index].local_nw_v6;
                      } else {
-                         acllist[acl_index].ace[ace_index].matches.dnsname = 
+                         acllist[acl_index].ace[ace_index].matches.addrmask = 
 			     manuf_list[manuf_index].local_nw_v4;
                      }
                 } 
