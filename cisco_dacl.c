@@ -30,6 +30,8 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
     int ace_index=0, index=0, i=0;
     char *txt=NULL;
     char *dnsname=NULL;
+    char *addrmask=NULL;
+    
 
     if (acllist == NULL || acl_count <= 0) {
         MUDC_LOG_ERR("Invalid parameters");
@@ -123,12 +125,21 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
                 }
             }
 
-            dnsname = acllist[index].ace[ace_index].matches.dnsname;
-            if (dnsname && (strcmp(dnsname, "any") == 0)) {
-                ace_ptr += sprintf(ace_ptr, " any");
-            } else {
-                ace_ptr += sprintf(ace_ptr, " host %s", dnsname);
-            }
+            if ( (dnsname = acllist[index].ace[ace_index].matches.dnsname) ) {
+		if (strcmp(dnsname, "any") == 0) {
+		  ace_ptr += sprintf(ace_ptr, " any");
+		} else {
+		  ace_ptr += sprintf(ace_ptr, " host %s", dnsname);
+		}
+	    } else if ( (addrmask = acllist[index].ace[ace_index].matches.addrmask) ) { /* it can either be a name or an
+										       * address mask
+										       */
+	      ace_ptr += sprintf(ace_ptr,"%s", addrmask);
+	    }
+	    
+	      
+		
+
 
             if (acllist[index].pak_direction == INGRESS) {
                 if ((acllist[index].ace[ace_index].matches.dst_lower_port != 0)
@@ -163,7 +174,16 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
 		    acllist[index].ace[ace_index].num_ace--;
                     ace_index--;
                 } else {
-                    ace_ptr += sprintf(ace_ptr, " established");
+		  /* do not ever apply ESTABLISHED on ingress ACLs */
+		  if (acllist[index].pak_direction == INGRESS) {
+		    if (direction == INGRESS_ONLY_ACL)
+		      ace_ptr += sprintf(ace_ptr, " syn ack"); /* if we are doing ingress only
+							        * ACLs the best we can do is block
+								* on syn acks on ingress.
+							        */
+
+		  } else
+                      ace_ptr += sprintf(ace_ptr, " established");
                 }
             }
             MUDC_LOG_INFO("ACE Ptr: %s", ace_str);

@@ -4,9 +4,10 @@
  */
 
 struct _match {
-    char* dnsname;
-    int protocol;
-    int is_ipv6;
+    char* dnsname;		/* domain name to match against */
+    char *addrmask;		/* ip address to match against */
+    int protocol;		/* protocol to match against */
+    int is_ipv6;		/* are we IPv6 */
     int src_lower_port;
     int src_upper_port;
     int dst_lower_port;
