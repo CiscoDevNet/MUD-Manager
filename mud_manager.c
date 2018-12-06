@@ -1682,29 +1682,39 @@ void send_response(struct mg_connection *nc, cJSON *parsed_json)
 static bool get_mudfs_signed_uri (char *msg, char *uri, char *requri)
 {
     cJSON *json=NULL;
+    cJSON *mudarry=NULL;
     char *rq=NULL;
 
     if (!uri || !msg || !requri) {
         MUDC_LOG_ERR("Bad parameters\n");
         return false;
     }
-    
     json = cJSON_Parse(msg);
     if (!json) {
 	MUDC_LOG_ERR("Parsing of .json file failed\n");
         return false;
     }
     
-    rq = GETSTR_JSONOBJ(json, "mud-signature");
-    if (rq) {
-        snprintf(requri, MAXREQURI, "%s", rq);
+
+    if ( (mudarry=cJSON_GetObjectItem(json,"ietf-mud:mud")) != NULL ) {
+      rq = GETSTR_JSONOBJ(mudarry, "mud-signature");
+      if (rq) {
+	snprintf(requri, MAXREQURI, "%s", rq);
+	cJSON_Delete(json);
+	return true;
+      }
+    }
+    /* chissel off .json and try again */
+    char *dotjson= rindex(uri,'.');
+    if ( dotjson != NULL ) {
+      snprintf(requri,MAXREQURI,"%s.p7s",dotjson);
     } else {
-        snprintf(requri, MAXREQURI, "%s", uri);
+      snprintf(requri,MAXREQURI, "%s.p7s",uri);
     }
     cJSON_Delete(json);
     return true;
 }
-
+    
 static void free_request_context (request_context *ctx) 
 {
     if (ctx == NULL) {
@@ -1779,36 +1789,6 @@ static void attempt_coa(sessions_info *sess)
     }
 }
 
-static int create_requri(char *base_uri, char *final_uri, int manuf_idx, 
-		      char *suffix)
-{
-
-    if (manuf_list[manuf_idx].https_port == NULL) {
-	snprintf(final_uri, MAXREQURI, "%s%s", base_uri, suffix);
-    } else {
-        char *tmp = strstr(base_uri, manuf_list[manuf_idx].authority);
-
-	MUDC_LOG_INFO("https_port not NULL");
-
-	/*
-	 * Write the initial portion.
-	 */
-        strncpy(final_uri, base_uri, tmp - base_uri);
-
-	/*
-	 * Write the authority, port, rest of the URI and suffix.
-	 */
-        snprintf(final_uri+(tmp-base_uri), MAXREQURI, "%s:%s%s%s", 
-		 manuf_list[manuf_idx].authority, 
-		 manuf_list[manuf_idx].https_port, 
-		 tmp+strlen(manuf_list[manuf_idx].authority),
-		 suffix);
-
-        MUDC_LOG_INFO("NEW URI <%s> \n", final_uri);
-    }
-
-    return 0;
-}
 
 void send_mudfs_request(struct mg_connection *nc, const char *base_uri, 
                                const char* mac_addr, 
@@ -1880,8 +1860,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
 	webcacert = manuf_list[manuf_idx].certfile;
     }
 
-    create_requri(ctx->uri, requri, manuf_idx, ".json");
-
+    snprintf(requri,MAXREQURI,"%s",ctx->uri);
     /*
      * The message below isn't an error, but it gives context to the libcurl
      * messages and CoA messages, which aren't so easily suppressed.
@@ -1922,8 +1901,8 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
      * a port number in it that needs to be retained.
      */
     memset(defaulturi, 0, sizeof(defaulturi)); // make valgrind happy
-    create_requri(ctx->uri, defaulturi, manuf_idx, ".p7s");
-    if (!get_mudfs_signed_uri(ctx->orig_mud, defaulturi, requri)) {
+
+    if (!get_mudfs_signed_uri(ctx->orig_mud, ctx->uri, requri)) {
 	MUDC_LOG_ERR("Unable to request signature file");
  	send_error_for_context(ctx, 500, NULL);
         goto err;
