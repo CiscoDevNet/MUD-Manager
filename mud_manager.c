@@ -450,13 +450,18 @@ static bool check_required_fields (request_context* ctx, cJSON *mud_json)
     } else {
 	tmp_strvalue = GETSTR_JSONOBJ(mud_json, "mud-url");
 	if (strcmp(tmp_strvalue,ctx->uri)) {
+	  /* just warn if the difference is ".json" */
+	  char *gotjson = strstr(tmp_strvalue,".json");
+	  if (gotjson == NULL || 
+	      strncmp(tmp_strvalue,ctx->uri,gotjson-tmp_strvalue)) {
+
        	    MUDC_LOG_ERR("MUD URL in MUD file does not match given MUD URL.");
 	    MUDC_LOG_ERR("     URL in MUD file: %s", tmp_strvalue);
 	    MUDC_LOG_ERR("     URL provided:    %s", ctx->uri);
             goto err;
+	  }
 	}
     }
-
     /*
      * Validate that some mandatory attributes are present that we don't
      * use. Just issue a warning for now.
@@ -632,24 +637,6 @@ static bool update_mudfile_database(request_context *ctx, cJSON* full_json,
     return(true);
 }
 
-static int find_index(ACL *acllist, int acl_count, char* acl_name) 
-{
-    int index=0, ret= -1;
-    
-    if (acllist == NULL || acl_name == NULL) {
-        MUDC_LOG_ERR("invalid parameters");
-        return -1;
-    }
-
-    for (index=0; index < acl_count; index++) {
-        MUDC_LOG_INFO("Index %d <Acl Name: %s>, <ACL List: %s> %d \n", index, acl_name, acllist[index].acl_name, acllist[index].pak_direction);
-        if (strcmp(acllist[index].acl_name, acl_name) == 0) {
-            ret=index;
-            break;
-        }
-    }
-    return ret;
-}
 
 static int parse_device_policy(cJSON *m_json, char* policy, ACL *acllist, int start_cnt, int direction)
 {
@@ -659,24 +646,24 @@ static int parse_device_policy(cJSON *m_json, char* policy, ACL *acllist, int st
 
     if (m_json == NULL || policy == NULL || acllist == NULL) {
         MUDC_LOG_ERR("invalid parameters");
-        return -1;
+        return 0;
     }
 
     policy_json = cJSON_GetObjectItem(m_json, policy);
     if (!policy_json) {
         MUDC_LOG_ERR("JSON file is missing '%s'", policy);
-        goto err;
+	return 0;
     }
 
     lists_json = cJSON_GetObjectItem(policy_json, "access-lists");
     if (!lists_json) {
         MUDC_LOG_ERR("JSON file is missing 'access-lists'from ietf-mud:device");
-        goto err;
+	return 0;
     }
     acllist_json = cJSON_GetObjectItem(lists_json, "access-list");
     if (!acllist_json) {
         MUDC_LOG_ERR("JSON file is missing 'access-list' from ietf-mud:device");
-        goto err;
+	return 0;
     }
     for (index=0;index < cJSON_GetArraySize(acllist_json); index++) {
         aclitem_json = cJSON_GetArrayItem(acllist_json, index);
@@ -684,15 +671,13 @@ static int parse_device_policy(cJSON *m_json, char* policy, ACL *acllist, int st
             acllist[index+start_cnt].acl_name = GETSTR_JSONOBJ(aclitem_json, "name");
             if (acllist[index+start_cnt].acl_name == NULL) {
                 MUDC_LOG_ERR("Missing 'acl name'");
-                goto err;
+		return 0;
             }
             acllist[index+start_cnt].pak_direction = direction;
         }
     }
-    ret_count = start_cnt+index++;
+    ret_count = index++;
     return(ret_count);
-err:
-    return(-1);
 }
 
 static bool parse_mud_port(cJSON *port_json, ACE *ace, int direction)
@@ -837,19 +822,11 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
      * ACLs we have.
      */
     acllist = (ACL*) calloc(MAX_ACL_STATEMENTS, sizeof(ACL));
-    acl_count = parse_device_policy(mud_json, "from-device-policy", acllist, 
+    acl_count += parse_device_policy(mud_json, "from-device-policy", acllist, 
 		    					    0, INGRESS);
-    if (acl_count == -1) {
-        MUDC_LOG_ERR("JSON device policy error");
-        goto err;
-    }
 
-    acl_count = parse_device_policy(mud_json, "to-device-policy", acllist, 
+    acl_count += parse_device_policy(mud_json, "to-device-policy", acllist, 
 		    					    acl_count, EGRESS);
-    if (acl_count == -1) {
-        MUDC_LOG_ERR("JSON device policy error");
-        goto err;
-    }
 
     /*
      * Find the "ietf-access-control-list:acls" section in the 
@@ -866,27 +843,34 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
         goto err;
     }
 
-    /*
-     * Loop through each of the ACLs in "acllist".
+    /* Here's the score: at this point we have zero or more ACLs
+     * in acllist, and a total number of entries found in acl_count.
+     * These are all from to- or from-device-policy entries in the
+     * MUD file.  Now we need to match ACLs with each of those entries.
+     * ONLY populate acllist for referenced ACLs.
      */
-    for (index=0;index < cJSON_GetArraySize(acllist_json); index++) {
-        aclitem_json = cJSON_GetArrayItem(acllist_json, index);
-        if (!aclitem_json) {
-            MUDC_LOG_ERR("'MUD file inconsistent: no ACL");
-            goto err;
-        }
+
+    for (acl_index=0;acl_index< acl_count; acl_index++) {
+      int k;
+      char *aclname;
+
+      for (k=0;k < cJSON_GetArraySize(acllist_json); k++) {
+        aclitem_json = cJSON_GetArrayItem(acllist_json, k);
 	/*
 	 * Find the name in acllist, and return its index. acllist holds
 	 * the ACL names disovered in the earlier from-device-policy and
 	 * to-device-policy sections of the file.
 	 */
-        acl_index = find_index(acllist, acl_count, 
-		    	   GETSTR_JSONOBJ(aclitem_json, "name"));
-        if (acl_index == -1) {
-            MUDC_LOG_ERR("MUD file inconsistent: ACL name %s not found",
-		    GETSTR_JSONOBJ(aclitem_json, "name"));
-            goto err;
-        }
+	if ((aclname=GETSTR_JSONOBJ(aclitem_json,"name")) == NULL) {
+	  MUDC_LOG_ERR("ACL missing name.");
+	  goto err;
+	}
+	if (strcmp(aclname,acllist[index].acl_name))
+	  continue;
+
+	acllist[acl_index].matched=1; /* this signals that we don't have a
+				       *  dangling reference
+				       */
 
         /*
 	 * Find and store the ACL "type", and find the first "ace".
@@ -1171,10 +1155,21 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
              }
              acllist[acl_index].ace_count++;
 	}
-    }
+	break; 			/* we don't need to continue the inner
+				 * loop once we've matched an ACL name
+				 */
+      }
+      /* now check to see if we found a match at all.  if not
+       * blow chunks
+       */
+      if (! acllist[acl_index].matched ) {
+	MUDC_LOG_ERR("Missing ACL entry for %s",acllist[acl_index].acl_name);
+	goto err;
+      }	
+    } /* close policy acl loop */
     MUDC_LOG_INFO("Calling Create response\n");
     response_json = create_policy_from_acllist(acl_type, acllist, acl_count,
-	    				       acl_list_type);
+ 	    				       acl_list_type);
    
     /*
      * Now that we've fully verified that the MUD file is properly formed 
@@ -1705,12 +1700,13 @@ static bool get_mudfs_signed_uri (char *msg, char *uri, char *requri)
       }
     }
     /* chissel off .json and try again */
-    char *dotjson= rindex(uri,'.');
+    char *dotjson= strstr(uri,".json");
     if ( dotjson != NULL ) {
-      snprintf(requri,MAXREQURI,"%s.p7s",dotjson);
+      snprintf(requri,MAXREQURI,"%*.*s.p7s",0,(int)(dotjson-uri),uri);
     } else {
-      snprintf(requri,MAXREQURI, "%s.p7s",uri);
+      snprintf(requri,MAXREQURI,"%s.p7s",uri);
     }
+    
     cJSON_Delete(json);
     return true;
 }
@@ -1879,9 +1875,18 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     curl_easy_cleanup(curl);
     curl = NULL;
     if (response == NULL) {
-        MUDC_LOG_ERR("Unable to reach MUD fileserver to fetch .json file");
- 	send_error_for_context(ctx, 204, "error from FS\n");
-        goto err;
+        MUDC_LOG_INFO("Unable to reach MUD fileserver to fetch MUD file.  Will try to append .json");
+	strcat(requri,".json");
+	curl = curl_easy_init();
+	response = fetch_file(curl, requri, &response_len, "mud+json",
+	    		  webcacert);
+	curl_easy_cleanup(curl);
+	curl = NULL;
+	if (response == NULL) {
+	  MUDC_LOG_ERR("Unable to reach MUD fileserver to fetch .json file");
+	  send_error_for_context(ctx, 204, "error from FS\n");
+	  goto err;
+	}
     }
 
     MUDC_LOG_INFO("MUD file successfully retrieved");
