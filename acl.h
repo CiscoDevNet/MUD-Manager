@@ -28,6 +28,7 @@ typedef struct _acl_struct {
     int  pak_direction;
     ACE *ace;
     int ace_count;
+    int matched;
 } ACL;
 
 /*
