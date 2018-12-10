@@ -968,10 +968,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 			    "ietf-acldns:dst-dnsname"))) {
                     acllist[acl_index].ace[ace_index].matches.dnsname = 
 			convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
-                } else {
-                    acllist[acl_index].ace[ace_index].matches.dnsname = "any";
-                }
-
+                } 
 	    }
 
 	    /*
@@ -1151,8 +1148,9 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	    /*
 	     * Sanity checks.
 	     */
-            if ((acllist[acl_index].ace[ace_index].matches.dnsname == NULL) 
-		    && !is_vlan) {
+            if ((acllist[acl_index].ace[ace_index].matches.dnsname == NULL)
+		&& (acllist[acl_index].ace[ace_index].matches.addrmask == NULL)
+		&& !is_vlan) {
                  MUDC_LOG_ERR("ACL: %d, ACE: %d\n", acl_index, ace_index);
                  MUDC_LOG_ERR("Missing Host or Controller name \n");
                  goto err;
