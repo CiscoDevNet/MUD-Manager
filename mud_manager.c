@@ -90,6 +90,8 @@ typedef struct _manufacturer_list {
     X509 *cert;
     X509 *web_cert;
     int vlan;
+    char* vlan_nw_v4;
+    char* vlan_nw_v6;
     char* my_ctrl_v4;
     char* my_ctrl_v6;
     char* local_nw_v4;
@@ -284,6 +286,8 @@ static int read_mudmgr_config (char* filename)
                         }
 		    };
                     manuf_list[i].vlan = GETINT_JSONOBJ(tmp_json, "vlan");
+		    manuf_list[i].vlan_nw_v4 = GETSTR_JSONOBJ(tmp_json, "vlan_nw_v4");
+		    manuf_list[i].vlan_nw_v6 = GETSTR_JSONOBJ(tmp_json, "vlan_nw_v4");
                     manuf_list[i].authority= GETSTR_JSONOBJ(tmp_json, "authority");
                     manuf_list[i].https_port = GETSTR_JSONOBJ(tmp_json, "https_port");
                     manuf_list[i].my_ctrl_v4 = GETSTR_JSONOBJ(tmp_json, "my_controller_v4");
@@ -1128,7 +1132,18 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
                    	 MUDC_LOG_INFO("VLAN is required but not configured for this Manufacturer\n");
                          goto err;
                     }
-                    acllist[acl_index].ace[ace_index].matches.dnsname = "any";
+		    /* we need either a vlan_nw_v4 or vlan_nw_v6 */
+		    if (! (manuf_list[manuf_index].vlan_nw_v4 ||
+			   manuf_list[manuf_index].vlan_nw_v6) ) {
+		      MUDC_LOG_ERR("VLAN assigned but no network mask.");
+		      goto err;
+		    }
+		    if ( is_v6 )
+		      acllist[acl_index].ace[ace_index].matches.addrmask =
+			manuf_list[manuf_index].vlan_nw_v6;
+		    else
+		      acllist[acl_index].ace[ace_index].matches.addrmask =
+			manuf_list[manuf_index].vlan_nw_v4;
                     is_vlan = 1;
                 }
 	    }
