@@ -134,7 +134,7 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
 	    } else if ( (addrmask = acllist[index].ace[ace_index].matches.addrmask) ) { /* it can either be a name or an
 										       * address mask
 										       */
-	      ace_ptr += sprintf(ace_ptr,"%s", addrmask);
+	      ace_ptr += sprintf(ace_ptr," %s", addrmask);
 	    }
 	    
 	      

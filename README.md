@@ -131,7 +131,11 @@ These are used to translate a "local-networks" statement found in a MUD file.
 
 #### vlan
 
-If a "same-manufacturer" statement is found in the MUD file, this VLAN value is sent with the ACLs to the NAD. Thesame VLAN value should be conigured for each type of device from that manufacturer that needs to communicate.
+If a "same-manufacturer" statement is found in the MUD file, this VLAN value is sent with the ACLs to the NAD. The same VLAN value should be conigured for each type of device from that manufacturer that needs to communicate.
+
+#### vlan_nw_v4, local_networks_v6
+
+For each VLAN there needs to be a statement such as "192.168.1.0 0.0.0.255" (or equivalent v6) to permit acces to that VLAN.
 
 #### DNSMapping, DNSMapping_v6
 
