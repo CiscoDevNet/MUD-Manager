@@ -91,6 +91,10 @@ If 'https://' is used, then the MUD Manager will also need the following TLS-rel
 * MUDManager_key, with a pathname to the MUD Manager's private key
 * Enterprise_CACert, with a pathname to the CA certificate that signed the MUDManager_cert
 
+### Default_VLAN
+
+This provides for a VLAN when same-manufacturer is not used.
+
 ### ACL_Type
 
 This directs the MUD manager to return ACLs only to enforce policy on the "ingress" direction (i.e., from the device), or whether to enforce policy on both ingress and egress (i.e., to and from the device). Its setting depends on the capabilities of the NAD. 

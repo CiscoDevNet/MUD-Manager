@@ -12,12 +12,12 @@
 
 cJSON* create_policy_from_acllist(enum acl_policy_type acl_type,
 				  ACL *acllist, int acl_count, 
-			    	  enum acl_direction direction) 
+				  enum acl_direction direction, int acl)
 {
     switch (acl_type) {
 	case CISCO_DACL:
 	   return create_cisco_dacl_policy(acllist, acl_count,
-		   				  direction);
+					   direction, acl);
 	default:
 	   MUDC_LOG_ERR("Unsupported ACL type: %d\n",
 		          acl_type);

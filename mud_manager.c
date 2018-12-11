@@ -58,6 +58,7 @@ static const char *mudmgr_CAcert=NULL;
 static const char *mudmgr_key=NULL;
 static const char *mudmgr_server=NULL;
 static const char *mudmgr_coa_pw=NULL;
+static int default_vlan=0;
 static int acl_list_type = INGRESS_EGRESS_ACLS;
 static enum acl_policy_type acl_type = CISCO_DACL;
 static mongoc_client_t *client=NULL;
@@ -101,6 +102,7 @@ typedef struct _manufacturer_list {
 // used externally
 cJSON *defacl_json=NULL; 
 cJSON *defacl_v6_json=NULL;
+
 // static
 static cJSON *config_json=NULL;
 static cJSON *dnsmap_json=NULL;
@@ -212,6 +214,7 @@ static int read_mudmgr_config (char* filename)
     mudmgr_CAcert = GETSTR_JSONOBJ(config_json,"Enterprise_CACert");
     acl_list_prefix = GETSTR_JSONOBJ(config_json, "ACL_Prefix");
     acl_list_type_str = GETSTR_JSONOBJ(config_json, "ACL_Type");
+    default_vlan = GETINT_JSONOBJ(config_json, "Default_VLAN");
     if ((acl_list_type_str != NULL) && !strcmp(acl_list_type_str, "dACL-ingress-only")) {
         acl_list_type = INGRESS_ONLY_ACL;
     }
@@ -767,7 +770,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
     cJSON *aceitem_json=NULL, *action_json=NULL, *matches_json=NULL;
     cJSON *port_json=NULL, *response_json=NULL;
     cJSON *tmp_json=NULL, *tmp_2_json=NULL, *ctrl_json=NULL;
-    int index=0, ace_index=0, acl_index=0, acl_count=0, is_v6=0, is_vlan=0;
+    int index=0, ace_index=0, acl_index=0, acl_count=0, is_v6=0, vlan=default_vlan;
     ACL *acllist=NULL;
     char *type=NULL;
     int cache_in_hours = 0;
@@ -1125,14 +1128,14 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		}
 
                 if (cJSON_GetObjectItem(tmp_json, "same-manufacturer")) {
-                    if (manuf_list[manuf_index].vlan == 0) {
+                    if (manuf_list[manuf_index].vlan == 0 ) {
                    	 MUDC_LOG_INFO("VLAN is required but not configured for this Manufacturer\n");
                          goto err;
                     }
 		    /* we need either a vlan_nw_v4 or vlan_nw_v6 */
 		    if (! (manuf_list[manuf_index].vlan_nw_v4 ||
 			   manuf_list[manuf_index].vlan_nw_v6) ) {
-		      MUDC_LOG_ERR("VLAN assigned but no network mask.");
+		      MUDC_LOG_ERR("VLAN assigned but no network / mask.");
 		      goto err;
 		    }
 		    if ( is_v6 )
@@ -1141,7 +1144,12 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		    else
 		      acllist[acl_index].ace[ace_index].matches.addrmask =
 			manuf_list[manuf_index].vlan_nw_v4;
-                    is_vlan = 1;
+		    if ( vlan && (vlan != default_vlan) ) {
+		      MUDC_LOG_INFO(
+		    "More than one VLAN requested.  VLAN %d will be ignored.",
+		      vlan);
+		    }
+		    vlan= manuf_list[manuf_index].vlan;
                 }
 	    }
 
@@ -1150,7 +1158,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	     */
             if ((acllist[acl_index].ace[ace_index].matches.dnsname == NULL)
 		&& (acllist[acl_index].ace[ace_index].matches.addrmask == NULL)
-		&& !is_vlan) {
+		&& !vlan) {
                  MUDC_LOG_ERR("ACL: %d, ACE: %d\n", acl_index, ace_index);
                  MUDC_LOG_ERR("Missing Host or Controller name \n");
                  goto err;
@@ -1182,7 +1190,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
     } /* close policy acl loop */
     MUDC_LOG_INFO("Calling Create response\n");
     response_json = create_policy_from_acllist(acl_type, acllist, acl_count,
- 	    				       acl_list_type);
+					       acl_list_type,vlan);
    
     /*
      * Now that we've fully verified that the MUD file is properly formed 
@@ -1320,7 +1328,7 @@ static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, boo
         dacl_name = NULL;  // we don't want to nuke this
         if (vlan) {
             cJSON_AddStringToObject(response_json, "Tunnel-Type", "VLAN");
-            cJSON_AddStringToObject(response_json, "Tunnel-Media-Type", 
+            cJSON_AddStringToObject(response_json, "Tunnel-Medium-Type", 
 		    				   "IEEE-802");
             cJSON_AddNumberToObject(response_json, "Tunnel-Private-Group-Id", 
 		    				   vlan);
@@ -1664,7 +1672,7 @@ void send_response(struct mg_connection *nc, cJSON *parsed_json)
     }
     if (vlan) {
         cJSON_AddStringToObject(response_json, "Tunnel-Type", "VLAN");
-        cJSON_AddStringToObject(response_json, "Tunnel-Media-Type", "IEEE-802");
+        cJSON_AddStringToObject(response_json, "Tunnel-Medium-Type", "IEEE-802");
         cJSON_AddNumberToObject(response_json, "Tunnel-Private-Group-Id", vlan);
     }
     response_str = cJSON_Print(response_json);

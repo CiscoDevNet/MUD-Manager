@@ -8,7 +8,7 @@ extern cJSON *defacl_json;
 extern cJSON *defacl_v6_json;
 
 cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
-			     	enum acl_direction direction);
+				enum acl_direction direction, int use_vlan);
 
 cJSON* get_cisco_dacl_policy(char *acl_name);
 

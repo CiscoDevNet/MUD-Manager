@@ -9,7 +9,7 @@ enum acl_policy_type {
 
 cJSON* create_policy_from_acllist(enum acl_policy_type response_type,
 				  ACL *acllist, int acl_count, 
-			    	  enum acl_direction direction);
+				  enum acl_direction direction, int vlan);
 
 cJSON* get_policy_by_aclname(enum acl_policy_type acl_type, char* acl_name);
 
