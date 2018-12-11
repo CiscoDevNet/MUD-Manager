@@ -118,8 +118,9 @@ static cJSON *dnsmap_json=NULL;
 static cJSON *ctrlmap_json=NULL;
 static cJSON *dnsmap_v6_json=NULL;
 static cJSON *ctrlmap_v6_json=NULL;
-static manufacturer_list manuf_list[10];
-static vlan_info vlan_list[10];	/* these two 10s go together */
+#define MAX_MANUF 10
+static manufacturer_list manuf_list[MAX_MANUF];
+static vlan_info vlan_list[MAX_MANUF];	/* these two 10s go together */
 static int num_vlans=0;
 static char *mongoDb_uristr=NULL, *mongoDb_policies_collection=NULL, *mongoDb_name=NULL;
 static char *mongoDb_mudfile_coll=NULL;
@@ -841,6 +842,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
     ACL *acllist=NULL;
     char *type=NULL;
     int cache_in_hours = 0;
+    int ignore_ace=0, ace_loc=0;
     time_t timer;
     time_t exptime;
 
@@ -979,10 +981,10 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	    MUDC_LOG_ERR("Too many ACE statements: %d", cJSON_GetArraySize(ace_json));
 	    goto err;
 	}
-        for (ace_index = 0; ace_index < cJSON_GetArraySize(ace_json); 
-		ace_index++) {
+        for (ace_loc = 0; ace_loc < cJSON_GetArraySize(ace_json);
+		ace_loc++) {
 
-            aceitem_json = cJSON_GetArrayItem(ace_json, ace_index); 
+            aceitem_json = cJSON_GetArrayItem(ace_json, ace_loc);
             if (!aceitem_json) {
 	    	MUDC_LOG_ERR("ACE list is corrupted");
 		goto err;
@@ -1193,6 +1195,36 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 			      manuf_list[manuf_index].my_ctrl_v4;
                     }
 		}
+               if ((ctrl_json=cJSON_GetObjectItem(tmp_json, "manufacturer"))) {
+		 char *mfgr=ctrl_json->valuestring;
+		 int i;
+		 /* we need to loop through manuf_list, figure out the VLAN
+		  * go through the VLAN list, and then add the ACL.  If it
+		  * is not in VLAN list, report that but move on.
+		  */
+
+		 for (i=0;i<MAX_MANUF; i++) {
+		   if ( (manuf_list[i].authority)) {
+		     if (! strcmp(mfgr,manuf_list[i].authority)) {/* win! */
+		     if (is_v6 && manuf_list[i].vlan_nw_v6)
+		       acllist[acl_index].ace[ace_index].matches.addrmask=
+			 manuf_list[i].vlan_nw_v6;
+		     else if (manuf_list[i].vlan_nw_v4)
+		       acllist[acl_index].ace[ace_index].matches.addrmask=
+			 manuf_list[i].vlan_nw_v4;
+		     else // we have a VLAN but no mask for this IP- ignore
+		       ignore_ace=1;
+		   }
+	         }
+		 }
+
+		 if (! ((acllist[acl_index].ace[ace_index].matches.addrmask)
+			|| (acllist[acl_index].ace[ace_index].matches.addrmask))) {
+		   MUDC_LOG_INFO("Manufacturer %s not found.  Moving on.",
+				 mfgr);
+		   ignore_ace=1;
+		 }
+	       }
 
                 if (cJSON_GetObjectItem(tmp_json, "same-manufacturer")) {
                     if (manuf_list[manuf_index].vlan == 0 ) {
@@ -1205,12 +1237,17 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		      MUDC_LOG_ERR("VLAN assigned but no network / mask.");
 		      goto err;
 		    }
-		    if ( is_v6 )
+		    if ( is_v6 && manuf_list[manuf_index].vlan_nw_v6)
 		      acllist[acl_index].ace[ace_index].matches.addrmask =
 			manuf_list[manuf_index].vlan_nw_v6;
-		    else
+		    else if ( manuf_list[manuf_index].vlan_nw_v4 )
 		      acllist[acl_index].ace[ace_index].matches.addrmask =
 			manuf_list[manuf_index].vlan_nw_v4;
+		     else // we have a VLAN but no mask for this IP- ignore
+		       {
+			 ignore_ace++;
+			 continue;
+		       }
 		    if ( vlan && (vlan != default_vlan) ) {
 		      MUDC_LOG_INFO(
 		    "More than one VLAN requested.  VLAN %d will be ignored.",
@@ -1218,7 +1255,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		    }
 		    vlan= manuf_list[manuf_index].vlan;
                 }
-	    }
+	       }
 
 	    /*
 	     * Sanity checks.
@@ -1241,7 +1278,16 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
                      acllist[acl_index].ace[ace_index].action = 1;
                   }
              }
-             acllist[acl_index].ace_count++;
+             if ( ! ignore_ace ) {
+	       acllist[acl_index].ace_count++;
+	       ace_index++;
+	     } else { 		/* be safe- clean stuff up */
+	       acllist[acl_index].ace[ace_index].action = 0;
+	       acllist[acl_index].ace[ace_index].matches.addrmask = NULL;
+	       acllist[acl_index].ace[ace_index].matches.dnsname = NULL;
+	       acllist[acl_index].ace[ace_index].matches.dir_initiated= 0;
+	       ignore_ace=0;
+	     }
 	}
 	break; 			/* we don't need to continue the inner
 				 * loop once we've matched an ACL name
