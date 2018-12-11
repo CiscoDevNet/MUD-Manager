@@ -22,7 +22,7 @@ extern mongoc_collection_t *policies_collection;
  * Return Cisco DACL RADIUS attributes.
  */
 cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
-				enum acl_direction direction)
+				enum acl_direction direction, int use_vlan)
 {
     cJSON *response_acl=NULL, *parsed_json=NULL, *acefmt=NULL;
     char *ace_ptr=NULL, *acl_prefix=NULL;
@@ -90,7 +90,8 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
 			      cJSON_CreateString(policy_name));
         cJSON_AddItemToObject(response_acl, "DACL", 
 			      acefmt = cJSON_CreateArray());
-
+	if (use_vlan)
+	  cJSON_AddItemToObject(response_acl, "VLAN", cJSON_CreateNumber(use_vlan));
         MUDC_LOG_INFO("Ace Count <%d>", acllist[index].ace_count);
         for (ace_index=0; ace_index < acllist[index].ace_count; ace_index++) {
             if (strcmp(acllist[index].acl_type, "ipv4") == 0) {
