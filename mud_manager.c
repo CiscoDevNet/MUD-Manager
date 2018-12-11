@@ -49,6 +49,7 @@ static const char *default_dbname = "mud_manager";
 static const char *default_policies_coll_name = "mud_policies";
 static const char *default_mudfile_coll_name = "mudfile";
 static const char *default_macaddr_coll_name = "macaddr";
+static const char *mongoDb_vlan_coll="vlans";
 static const char *default_uri = "mongodb://127.0.0.1:27017";
 //static struct mg_serve_http_opts s_http_server_opts;
 static struct mg_context *mg_server_ctx=NULL;
@@ -64,11 +65,19 @@ static enum acl_policy_type acl_type = CISCO_DACL;
 static mongoc_client_t *client=NULL;
 static mongoc_collection_t *mudfile_collection=NULL;
 static mongoc_collection_t *macaddr_collection=NULL;
+static mongoc_collection_t *vlan_collection=NULL;
 
 // referenced externally
 mongoc_collection_t *policies_collection=NULL;
 const char *acl_list_prefix = NULL;
 
+typedef struct _vlan_info {
+  int vlan;
+  char *mud_url;
+  char *v4_nw;
+  char *v6_nw;
+} vlan_info;
+  
 typedef struct _request_context {
     struct mg_connection *in;
     char *uri;
@@ -110,6 +119,8 @@ static cJSON *ctrlmap_json=NULL;
 static cJSON *dnsmap_v6_json=NULL;
 static cJSON *ctrlmap_v6_json=NULL;
 static manufacturer_list manuf_list[10];
+static vlan_info vlan_list[10];	/* these two 10s go together */
+static int num_vlans=0;
 static char *mongoDb_uristr=NULL, *mongoDb_policies_collection=NULL, *mongoDb_name=NULL;
 static char *mongoDb_mudfile_coll=NULL;
 static char *mongoDb_macaddr_coll=NULL;
@@ -179,12 +190,53 @@ static void send_error_for_context(request_context *ctx, int status,
     send_error_result(ctx->in, status, msg);
 }
 
+/* 
+ * This routine checks each VLAN and adds them to a pool.  They may
+ * be assigned in this pool.
+ */
+
+static void add_vlans_to_pool() {
+    bson_t *filter;
+    mongoc_cursor_t *cursor;
+    int i=0;
+
+
+  /* outer loop: go through the vlan_list[] to see if each exists
+   * in the mongodb collection.  If not, add one.
+   */
+
+  for (i=0; i< num_vlans; i++) {
+    const bson_t *record;
+
+    filter = BCON_NEW("VLAN_ID", BCON_INT32(vlan_list[i].vlan));
+    cursor = mongoc_collection_find_with_opts(vlan_collection, filter,
+	    				      NULL, NULL);
+    if (mongoc_cursor_next(cursor, &record)) {
+      continue;
+    }
+    /* here we found a new one. */
+    bson_destroy(filter);
+    filter = BCON_NEW(
+			"VLAN_ID", BCON_INT32(vlan_list[i].vlan),
+			"v4addrmask", BCON_UTF8(vlan_list[i].v4_nw),
+			"v6addrmask", BCON_UTF8(vlan_list[i].v6_nw),
+			"MUDURL",BCON_UTF8("none"));
+      
+    mongoc_collection_insert_one(vlan_collection, filter, NULL, NULL, NULL);
+    bson_destroy(filter);
+  }
+  mongoc_cursor_destroy (cursor);
+}
+
+
 static int read_mudmgr_config (char* filename) 
 {
     BIO *conf_file=NULL, *certin=NULL;
     char jsondata[MAX_BUF+1];
     char *acl_list_type_str=NULL;
     cJSON *manuf_json=NULL, *tmp_json=NULL, *cacert_json=NULL;
+    cJSON *vlan_json;
+
     int ret=-1, i=0;
 
     if (!filename) {
@@ -219,8 +271,24 @@ static int read_mudmgr_config (char* filename)
         acl_list_type = INGRESS_ONLY_ACL;
     }
 
-    //MUDC_LOG_INFO("MUDCTRL CA Cert <%s> MUDCTRL Cert <%s> MUDCTRL Key <%s>", mudmgr_CAcert, mudmgr_cert, mudmgr_key);
     {   // moved if (!config_json) test earlier; skip moving below lines for now...
+      if ((vlan_json = cJSON_GetObjectItem(config_json, "VLANs")) != NULL) {
+	for (i=0;i< cJSON_GetArraySize(vlan_json);i++) {
+	  tmp_json=cJSON_GetArrayItem(vlan_json,i); /* fill out the pool */
+	  vlan_list[i].vlan=GETINT_JSONOBJ(tmp_json,"VLAN_ID");
+	  vlan_list[i].v4_nw=GETSTR_JSONOBJ(tmp_json,"v4addrmask");
+	  vlan_list[i].v6_nw=GETSTR_JSONOBJ(tmp_json,"v6addrmask");
+	  /* Sanity check */
+	  if (vlan_list[i].vlan == 0 || // no vlan entry should be 0
+	      vlan_list[i].vlan == default_vlan || // not the default
+	      (vlan_list[i].v4_nw == NULL && vlan_list[i].v6_nw == NULL)) {
+	    MUDC_LOG_ERR("VLAN entries inconsistent.");
+	    goto err;
+	  }
+	}
+	num_vlans=i;
+      }
+
         manuf_json = cJSON_GetObjectItem(config_json, "Manufacturers");
         if (manuf_json == NULL) {
             MUDC_LOG_ERR("Error before: [%s]", cJSON_GetErrorPtr());
@@ -555,10 +623,9 @@ static cJSON *get_mudfile_uri(char *uri)
     const bson_t *record=NULL;
     mongoc_cursor_t *cursor=NULL;
     bson_t *filter=NULL;
-    cJSON *found_json = NULL;
-    char *found_str = NULL;
+    cJSON *found_json=NULL;
+    char *found_str=NULL;
     
-
     filter = BCON_NEW("URI", BCON_UTF8(uri));
     cursor = mongoc_collection_find_with_opts(mudfile_collection, filter,
 	    				      NULL, NULL);
@@ -2586,6 +2653,7 @@ void initialize_MongoDB()
     policies_collection = mongoc_client_get_collection (client, mongoDb_name, mongoDb_policies_collection);
     mudfile_collection = mongoc_client_get_collection (client, mongoDb_name, mongoDb_mudfile_coll);
     macaddr_collection = mongoc_client_get_collection (client, mongoDb_name, mongoDb_macaddr_coll);
+    vlan_collection = mongoc_client_get_collection (client, mongoDb_name, mongoDb_vlan_coll);
 }
 
 DH *get_dh2236()
@@ -2744,6 +2812,10 @@ static void mud_manager_cleanup(void)
     if (macaddr_collection != NULL) {
         mongoc_collection_destroy(macaddr_collection);
     }
+    if (vlan_collection != NULL) {
+      mongoc_collection_destroy(vlan_collection);
+    }
+
     if (client != NULL) {
         mongoc_client_destroy(client);
     }
@@ -2838,6 +2910,11 @@ int main(int argc, char *argv[])
     //s_http_server_opts.enable_directory_listing = "yes";
 
     initialize_MongoDB();
+    // Get any that are not listed in the DB into the DB.
+
+    if ( num_vlans > 0 ) {
+      add_vlans_to_pool();
+    }
 
 #if 0
     /* Use current binary directory as document root */
