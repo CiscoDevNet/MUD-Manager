@@ -1328,7 +1328,7 @@ static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, boo
         dacl_name = NULL;  // we don't want to nuke this
         if (vlan) {
             cJSON_AddStringToObject(response_json, "Tunnel-Type", "VLAN");
-            cJSON_AddStringToObject(response_json, "Tunnel-Media-Type", 
+            cJSON_AddStringToObject(response_json, "Tunnel-Medium-Type", 
 		    				   "IEEE-802");
             cJSON_AddNumberToObject(response_json, "Tunnel-Private-Group-Id", 
 		    				   vlan);
@@ -1672,7 +1672,7 @@ void send_response(struct mg_connection *nc, cJSON *parsed_json)
     }
     if (vlan) {
         cJSON_AddStringToObject(response_json, "Tunnel-Type", "VLAN");
-        cJSON_AddStringToObject(response_json, "Tunnel-Media-Type", "IEEE-802");
+        cJSON_AddStringToObject(response_json, "Tunnel-Medium-Type", "IEEE-802");
         cJSON_AddNumberToObject(response_json, "Tunnel-Private-Group-Id", vlan);
     }
     response_str = cJSON_Print(response_json);
