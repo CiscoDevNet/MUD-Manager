@@ -280,10 +280,15 @@ static int read_mudmgr_config (char* filename)
 	  vlan_list[i].v4_nw=GETSTR_JSONOBJ(tmp_json,"v4addrmask");
 	  vlan_list[i].v6_nw=GETSTR_JSONOBJ(tmp_json,"v6addrmask");
 	  /* Sanity check */
-	  if (vlan_list[i].vlan == 0 || // no vlan entry should be 0
-	      vlan_list[i].vlan == default_vlan || // not the default
-	      (vlan_list[i].v4_nw == NULL && vlan_list[i].v6_nw == NULL)) {
-	    MUDC_LOG_ERR("VLAN entries inconsistent.");
+	  if (vlan_list[i].vlan == 0 ) { // no vlan entry should be 0
+	    MUDC_LOG_ERR("Illegal VLAN value.");
+	    goto err;
+	  }
+	  if ( vlan_list[i].vlan == default_vlan ) { // not the default
+	    MUD_LOG_ERR("Warning: VLAN value is the same as the default.");
+	  }
+	  if (vlan_list[i].v4_nw == NULL && vlan_list[i].v6_nw == NULL) {
+	    MUDC_LOG_ERR("VLANs MUST have at least an IPv4 *or* IPv6 net and mask.");
 	    goto err;
 	  }
 	}
@@ -1278,10 +1283,10 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
                      acllist[acl_index].ace[ace_index].action = 1;
                   }
              }
-             if ( ! ignore_ace ) {
+             if ( ! ignore_ace ) { /* if not set, we're good */
 	       acllist[acl_index].ace_count++;
 	       ace_index++;
-	     } else { 		/* be safe- clean stuff up */
+	     } else { 		/* otherwise we clear and reuse next time */
 	       acllist[acl_index].ace[ace_index].action = 0;
 	       acllist[acl_index].ace[ace_index].matches.addrmask = NULL;
 	       acllist[acl_index].ace[ace_index].matches.dnsname = NULL;
