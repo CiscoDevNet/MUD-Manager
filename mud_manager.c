@@ -49,6 +49,7 @@ static const char *default_dbname = "mud_manager";
 static const char *default_policies_coll_name = "mud_policies";
 static const char *default_mudfile_coll_name = "mudfile";
 static const char *default_macaddr_coll_name = "macaddr";
+static const char *mongoDb_vlan_coll="vlans";
 static const char *default_uri = "mongodb://127.0.0.1:27017";
 //static struct mg_serve_http_opts s_http_server_opts;
 static struct mg_context *mg_server_ctx=NULL;
@@ -64,11 +65,19 @@ static enum acl_policy_type acl_type = CISCO_DACL;
 static mongoc_client_t *client=NULL;
 static mongoc_collection_t *mudfile_collection=NULL;
 static mongoc_collection_t *macaddr_collection=NULL;
+static mongoc_collection_t *vlan_collection=NULL;
 
 // referenced externally
 mongoc_collection_t *policies_collection=NULL;
 const char *acl_list_prefix = NULL;
 
+typedef struct _vlan_info {
+  int vlan;
+  char *mud_url;
+  char *v4_nw;
+  char *v6_nw;
+} vlan_info;
+  
 typedef struct _request_context {
     struct mg_connection *in;
     char *uri;
@@ -109,7 +118,10 @@ static cJSON *dnsmap_json=NULL;
 static cJSON *ctrlmap_json=NULL;
 static cJSON *dnsmap_v6_json=NULL;
 static cJSON *ctrlmap_v6_json=NULL;
-static manufacturer_list manuf_list[10];
+#define MAX_MANUF 10
+static manufacturer_list manuf_list[MAX_MANUF];
+static vlan_info vlan_list[MAX_MANUF];	/* these two 10s go together */
+static int num_vlans=0;
 static char *mongoDb_uristr=NULL, *mongoDb_policies_collection=NULL, *mongoDb_name=NULL;
 static char *mongoDb_mudfile_coll=NULL;
 static char *mongoDb_macaddr_coll=NULL;
@@ -179,12 +191,53 @@ static void send_error_for_context(request_context *ctx, int status,
     send_error_result(ctx->in, status, msg);
 }
 
+/* 
+ * This routine checks each VLAN and adds them to a pool.  They may
+ * be assigned in this pool.
+ */
+
+static void add_vlans_to_pool() {
+    bson_t *filter;
+    mongoc_cursor_t *cursor;
+    int i=0;
+
+
+  /* outer loop: go through the vlan_list[] to see if each exists
+   * in the mongodb collection.  If not, add one.
+   */
+
+  for (i=0; i< num_vlans; i++) {
+    const bson_t *record;
+
+    filter = BCON_NEW("VLAN_ID", BCON_INT32(vlan_list[i].vlan));
+    cursor = mongoc_collection_find_with_opts(vlan_collection, filter,
+	    				      NULL, NULL);
+    if (mongoc_cursor_next(cursor, &record)) {
+      continue;
+    }
+    /* here we found a new one. */
+    bson_destroy(filter);
+    filter = BCON_NEW(
+			"VLAN_ID", BCON_INT32(vlan_list[i].vlan),
+			"v4addrmask", BCON_UTF8(vlan_list[i].v4_nw),
+			"v6addrmask", BCON_UTF8(vlan_list[i].v6_nw),
+			"MUDURL",BCON_UTF8("none"));
+      
+    mongoc_collection_insert_one(vlan_collection, filter, NULL, NULL, NULL);
+    bson_destroy(filter);
+  }
+  mongoc_cursor_destroy (cursor);
+}
+
+
 static int read_mudmgr_config (char* filename) 
 {
     BIO *conf_file=NULL, *certin=NULL;
     char jsondata[MAX_BUF+1];
     char *acl_list_type_str=NULL;
     cJSON *manuf_json=NULL, *tmp_json=NULL, *cacert_json=NULL;
+    cJSON *vlan_json;
+
     int ret=-1, i=0;
 
     if (!filename) {
@@ -219,8 +272,24 @@ static int read_mudmgr_config (char* filename)
         acl_list_type = INGRESS_ONLY_ACL;
     }
 
-    //MUDC_LOG_INFO("MUDCTRL CA Cert <%s> MUDCTRL Cert <%s> MUDCTRL Key <%s>", mudmgr_CAcert, mudmgr_cert, mudmgr_key);
     {   // moved if (!config_json) test earlier; skip moving below lines for now...
+      if ((vlan_json = cJSON_GetObjectItem(config_json, "VLANs")) != NULL) {
+	for (i=0;i< cJSON_GetArraySize(vlan_json);i++) {
+	  tmp_json=cJSON_GetArrayItem(vlan_json,i); /* fill out the pool */
+	  vlan_list[i].vlan=GETINT_JSONOBJ(tmp_json,"VLAN_ID");
+	  vlan_list[i].v4_nw=GETSTR_JSONOBJ(tmp_json,"v4addrmask");
+	  vlan_list[i].v6_nw=GETSTR_JSONOBJ(tmp_json,"v6addrmask");
+	  /* Sanity check */
+	  if (vlan_list[i].vlan == 0 || // no vlan entry should be 0
+	      vlan_list[i].vlan == default_vlan || // not the default
+	      (vlan_list[i].v4_nw == NULL && vlan_list[i].v6_nw == NULL)) {
+	    MUDC_LOG_ERR("VLAN entries inconsistent.");
+	    goto err;
+	  }
+	}
+	num_vlans=i;
+      }
+
         manuf_json = cJSON_GetObjectItem(config_json, "Manufacturers");
         if (manuf_json == NULL) {
             MUDC_LOG_ERR("Error before: [%s]", cJSON_GetErrorPtr());
@@ -555,10 +624,9 @@ static cJSON *get_mudfile_uri(char *uri)
     const bson_t *record=NULL;
     mongoc_cursor_t *cursor=NULL;
     bson_t *filter=NULL;
-    cJSON *found_json = NULL;
-    char *found_str = NULL;
+    cJSON *found_json=NULL;
+    char *found_str=NULL;
     
-
     filter = BCON_NEW("URI", BCON_UTF8(uri));
     cursor = mongoc_collection_find_with_opts(mudfile_collection, filter,
 	    				      NULL, NULL);
@@ -774,6 +842,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
     ACL *acllist=NULL;
     char *type=NULL;
     int cache_in_hours = 0;
+    int ignore_ace=0, ace_loc=0;
     time_t timer;
     time_t exptime;
 
@@ -912,10 +981,10 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	    MUDC_LOG_ERR("Too many ACE statements: %d", cJSON_GetArraySize(ace_json));
 	    goto err;
 	}
-        for (ace_index = 0; ace_index < cJSON_GetArraySize(ace_json); 
-		ace_index++) {
+        for (ace_loc = 0; ace_loc < cJSON_GetArraySize(ace_json);
+		ace_loc++) {
 
-            aceitem_json = cJSON_GetArrayItem(ace_json, ace_index); 
+            aceitem_json = cJSON_GetArrayItem(ace_json, ace_loc);
             if (!aceitem_json) {
 	    	MUDC_LOG_ERR("ACE list is corrupted");
 		goto err;
@@ -1126,6 +1195,36 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 			      manuf_list[manuf_index].my_ctrl_v4;
                     }
 		}
+               if ((ctrl_json=cJSON_GetObjectItem(tmp_json, "manufacturer"))) {
+		 char *mfgr=ctrl_json->valuestring;
+		 int i;
+		 /* we need to loop through manuf_list, figure out the VLAN
+		  * go through the VLAN list, and then add the ACL.  If it
+		  * is not in VLAN list, report that but move on.
+		  */
+
+		 for (i=0;i<MAX_MANUF; i++) {
+		   if ( (manuf_list[i].authority)) {
+		     if (! strcmp(mfgr,manuf_list[i].authority)) {/* win! */
+		     if (is_v6 && manuf_list[i].vlan_nw_v6)
+		       acllist[acl_index].ace[ace_index].matches.addrmask=
+			 manuf_list[i].vlan_nw_v6;
+		     else if (manuf_list[i].vlan_nw_v4)
+		       acllist[acl_index].ace[ace_index].matches.addrmask=
+			 manuf_list[i].vlan_nw_v4;
+		     else // we have a VLAN but no mask for this IP- ignore
+		       ignore_ace=1;
+		   }
+	         }
+		 }
+
+		 if (! ((acllist[acl_index].ace[ace_index].matches.addrmask)
+			|| (acllist[acl_index].ace[ace_index].matches.addrmask))) {
+		   MUDC_LOG_INFO("Manufacturer %s not found.  Moving on.",
+				 mfgr);
+		   ignore_ace=1;
+		 }
+	       }
 
                 if (cJSON_GetObjectItem(tmp_json, "same-manufacturer")) {
                     if (manuf_list[manuf_index].vlan == 0 ) {
@@ -1138,12 +1237,17 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		      MUDC_LOG_ERR("VLAN assigned but no network / mask.");
 		      goto err;
 		    }
-		    if ( is_v6 )
+		    if ( is_v6 && manuf_list[manuf_index].vlan_nw_v6)
 		      acllist[acl_index].ace[ace_index].matches.addrmask =
 			manuf_list[manuf_index].vlan_nw_v6;
-		    else
+		    else if ( manuf_list[manuf_index].vlan_nw_v4 )
 		      acllist[acl_index].ace[ace_index].matches.addrmask =
 			manuf_list[manuf_index].vlan_nw_v4;
+		     else // we have a VLAN but no mask for this IP- ignore
+		       {
+			 ignore_ace++;
+			 continue;
+		       }
 		    if ( vlan && (vlan != default_vlan) ) {
 		      MUDC_LOG_INFO(
 		    "More than one VLAN requested.  VLAN %d will be ignored.",
@@ -1151,7 +1255,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		    }
 		    vlan= manuf_list[manuf_index].vlan;
                 }
-	    }
+	       }
 
 	    /*
 	     * Sanity checks.
@@ -1174,7 +1278,16 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
                      acllist[acl_index].ace[ace_index].action = 1;
                   }
              }
-             acllist[acl_index].ace_count++;
+             if ( ! ignore_ace ) {
+	       acllist[acl_index].ace_count++;
+	       ace_index++;
+	     } else { 		/* be safe- clean stuff up */
+	       acllist[acl_index].ace[ace_index].action = 0;
+	       acllist[acl_index].ace[ace_index].matches.addrmask = NULL;
+	       acllist[acl_index].ace[ace_index].matches.dnsname = NULL;
+	       acllist[acl_index].ace[ace_index].matches.dir_initiated= 0;
+	       ignore_ace=0;
+	     }
 	}
 	break; 			/* we don't need to continue the inner
 				 * loop once we've matched an ACL name
@@ -2586,6 +2699,7 @@ void initialize_MongoDB()
     policies_collection = mongoc_client_get_collection (client, mongoDb_name, mongoDb_policies_collection);
     mudfile_collection = mongoc_client_get_collection (client, mongoDb_name, mongoDb_mudfile_coll);
     macaddr_collection = mongoc_client_get_collection (client, mongoDb_name, mongoDb_macaddr_coll);
+    vlan_collection = mongoc_client_get_collection (client, mongoDb_name, mongoDb_vlan_coll);
 }
 
 DH *get_dh2236()
@@ -2744,6 +2858,10 @@ static void mud_manager_cleanup(void)
     if (macaddr_collection != NULL) {
         mongoc_collection_destroy(macaddr_collection);
     }
+    if (vlan_collection != NULL) {
+      mongoc_collection_destroy(vlan_collection);
+    }
+
     if (client != NULL) {
         mongoc_client_destroy(client);
     }
@@ -2838,6 +2956,11 @@ int main(int argc, char *argv[])
     //s_http_server_opts.enable_directory_listing = "yes";
 
     initialize_MongoDB();
+    // Get any that are not listed in the DB into the DB.
+
+    if ( num_vlans > 0 ) {
+      add_vlans_to_pool();
+    }
 
 #if 0
     /* Use current binary directory as document root */
