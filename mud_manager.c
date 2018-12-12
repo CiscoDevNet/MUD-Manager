@@ -285,7 +285,7 @@ static int read_mudmgr_config (char* filename)
 	    goto err;
 	  }
 	  if ( vlan_list[i].vlan == default_vlan ) { // not the default
-	    MUD_LOG_ERR("Warning: VLAN value is the same as the default.");
+	    MUDC_LOG_ERR("Warning: VLAN value is the same as the default.");
 	  }
 	  if (vlan_list[i].v4_nw == NULL && vlan_list[i].v6_nw == NULL) {
 	    MUDC_LOG_ERR("VLANs MUST have at least an IPv4 *or* IPv6 net and mask.");
