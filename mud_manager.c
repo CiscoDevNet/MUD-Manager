@@ -191,6 +191,7 @@ static void send_error_for_context(request_context *ctx, int status,
     send_error_result(ctx->in, status, msg);
 }
 
+#ifdef MUD_LATER_RELEASE
 /* 
  * This routine checks each VLAN and adds them to a pool.  They may
  * be assigned in this pool.
@@ -229,6 +230,7 @@ static void add_vlans_to_pool() {
   mongoc_cursor_destroy (cursor);
 }
 
+#endif /* MUD_LATER_RELEASE */
 
 static int read_mudmgr_config (char* filename) 
 {
@@ -2963,9 +2965,11 @@ int main(int argc, char *argv[])
     initialize_MongoDB();
     // Get any that are not listed in the DB into the DB.
 
+#ifdef MUD_LATER_RELEASE
     if ( num_vlans > 0 ) {
       add_vlans_to_pool();
     }
+#endif
 
 #if 0
     /* Use current binary directory as document root */
