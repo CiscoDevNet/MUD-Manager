@@ -36,3 +36,9 @@ echo "MUD MACADDR COLLECTION"
 echo
 
 mongo mud_manager --eval "db.macaddr.find().forEach(printjson)" 
+
+echo
+echo "MUD VLANS COLLECTION"
+echo
+
+mongo mud_manager --eval "db.vlans.find().forEach(printjson)"
