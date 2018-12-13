@@ -32,8 +32,8 @@
 #define DACL_INGRESS_EGRESS 0
 #define DACL_INGRESS_ONLY 1
 #define MAX_BUF 4096
-#define MAX_ACL_STATEMENTS 10
-#define MAX_ACE_STATEMENTS 10
+#define MAX_ACL_STATEMENTS 50
+#define MAX_ACE_STATEMENTS 50
 
 #define FROM_DEVICE 0
 #define TO_DEVICE 1
@@ -1255,7 +1255,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 			 ignore_ace++;
 			 continue;
 		       }
-		    if ( vlan && (vlan != default_vlan) ) {
+		    if ( vlan && (vlan == default_vlan) ) {
 		      MUDC_LOG_INFO(
 		    "More than one VLAN requested.  VLAN %d will be ignored.",
 		      vlan);
