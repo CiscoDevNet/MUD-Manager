@@ -316,6 +316,17 @@ static int find_vlan(manufacturer_list *manuf) {
   return -1;
 }
 
+/*
+ * make more space for ACEs when needed.  Return -1 if we fail.
+ */
+
+int make_room(ACE **ace,size_t  oldsize,size_t newsize) {
+  if ((*ace=realloc(ace,newsize)) == NULL)
+    return -1;
+  memset(ace+oldsize,0,newsize-oldsize);
+  return 0;
+}
+
 
 static int read_mudmgr_config (char* filename) 
 {
@@ -813,7 +824,7 @@ static bool update_mudfile_database(request_context *ctx, cJSON* full_json,
 }
 
 
-static int parse_device_policy(cJSON *m_json, char* policy, ACL *acllist, int start_cnt, int direction)
+static int parse_device_policy(cJSON *m_json, char* policy, ACL *acllist, int start_cnt, int direction,int alloced_acls)
 {
     cJSON *lists_json=NULL, *acllist_json=NULL; 
     cJSON *aclitem_json=NULL, *policy_json=NULL;
@@ -842,6 +853,10 @@ static int parse_device_policy(cJSON *m_json, char* policy, ACL *acllist, int st
     }
     for (index=0;index < cJSON_GetArraySize(acllist_json); index++) {
         aclitem_json = cJSON_GetArrayItem(acllist_json, index);
+	if (index+start_cnt > alloced_acls) {
+	  MUDC_LOG_ERR("WAY too many ACLs.  Number should never exceed 4.");
+	  return 0;
+	}
         if (aclitem_json) {
             acllist[index+start_cnt].acl_name = GETSTR_JSONOBJ(aclitem_json, "name");
             if (acllist[index+start_cnt].acl_name == NULL) {
@@ -940,6 +955,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
     cJSON *tmp_json=NULL, *tmp_2_json=NULL, *ctrl_json=NULL;
     int index=0, ace_index=0, acl_index=0, acl_count=0, is_v6=0, vlan=default_vlan;
     ACL *acllist=NULL;
+    int alloced_aces,alloced_acls;
     char *type=NULL;
     int cache_in_hours = 0;
     int ignore_ace=0, ace_loc=0;
@@ -998,11 +1014,12 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
      * ACLs we have.
      */
     acllist = (ACL*) calloc(MAX_ACL_STATEMENTS, sizeof(ACL));
+    alloced_acls=MAX_ACL_STATEMENTS;
     acl_count += parse_device_policy(mud_json, "from-device-policy", acllist, 
-		    					    0, INGRESS);
+				     0, INGRESS,alloced_acls);
 
     acl_count += parse_device_policy(mud_json, "to-device-policy", acllist, 
-		    					    acl_count, EGRESS);
+				     acl_count, EGRESS,alloced_acls);
 
     /*
      * Find the "ietf-access-control-list:acls" section in the 
@@ -1072,15 +1089,21 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	    MUDC_LOG_ERR("ACE statements are missing");
 	    goto err;
         }
-        acllist[acl_index].ace = (ACE*)calloc(MAX_ACE_STATEMENTS, sizeof(ACE));
+
+	/* We'll start with a reasonable allocation.  Note that the number of
+	 * ACEs in the config may exceed that of the number in the mud file.
+	 */
+
         acllist[acl_index].ace_count = 0;
+        acllist[acl_index].ace = (ACE*) calloc(MAX_ACE_STATEMENTS, sizeof(ACE));
+	alloced_aces=MAX_ACE_STATEMENTS; 
 	/*
 	 * Loop through "ace" statements in this ACL.
 	 */
-	if (cJSON_GetArraySize(ace_json) > MAX_ACE_STATEMENTS) {
+	/*	if (cJSON_GetArraySize(ace_json) > MAX_ACE_STATEMENTS) {
 	    MUDC_LOG_ERR("Too many ACE statements: %d", cJSON_GetArraySize(ace_json));
 	    goto err;
-	}
+	    }*/
         for (ace_loc = 0; ace_loc < cJSON_GetArraySize(ace_json);
 		ace_loc++) {
 
@@ -1399,6 +1422,17 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
              if ( ! ignore_ace ) { /* if not set, we're good */
 	       acllist[acl_index].ace_count++;
 	       ace_index++;
+	       if ( ace_index >= alloced_aces) {
+		 ACE *tmpace=acllist[acl_index].ace;
+		 if ( make_room(&tmpace,
+			       alloced_aces*sizeof(ACE),
+			       (alloced_aces+10)*sizeof(ACE)) == -1 ) {
+		   MUDC_LOG_ERR("Not enough memory to realloc");
+		   goto err;
+		 }
+		 acllist[acl_index].ace=tmpace;
+		 alloced_aces+=10;
+	       }
 	     } else { 		/* otherwise we clear and reuse next time */
 	       acllist[acl_index].ace[ace_index].action = 0;
 	       acllist[acl_index].ace[ace_index].matches.addrmask = NULL;
