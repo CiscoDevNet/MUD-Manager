@@ -7,7 +7,7 @@
 		{ "authority" : "luminaire.example.com",
                   "cert": "/home/mudtester/luminaire-cacert.pem",
 		  "my_controller_v4" : "10.1.1.4",
-		  "local_networks_v4" : "255.255.255.255"
+		  "local_networks_v4" : "10.1.1.0 0.0.0.255"
 	 	}
 	 ],
 	"DNSMapping" : {
