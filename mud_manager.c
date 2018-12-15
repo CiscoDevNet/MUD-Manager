@@ -59,7 +59,10 @@ static const char *mudmgr_CAcert=NULL;
 static const char *mudmgr_key=NULL;
 static const char *mudmgr_server=NULL;
 static const char *mudmgr_coa_pw=NULL;
+static char *default_localv4=NULL;
+static char *default_localv6=NULL;
 static int default_vlan=0;
+static int manager_version=0;
 static int acl_list_type = INGRESS_EGRESS_ACLS;
 static enum acl_policy_type acl_type = CISCO_DACL;
 static mongoc_client_t *client=NULL;
@@ -191,7 +194,6 @@ static void send_error_for_context(request_context *ctx, int status,
     send_error_result(ctx->in, status, msg);
 }
 
-#ifdef MUD_LATER_RELEASE
 /* 
  * This routine checks each VLAN and adds them to a pool.  They may
  * be assigned in this pool.
@@ -199,7 +201,7 @@ static void send_error_for_context(request_context *ctx, int status,
 
 static void add_vlans_to_pool() {
     bson_t *filter;
-    mongoc_cursor_t *cursor;
+    mongoc_cursor_t *cursor=NULL;
     int i=0;
 
 
@@ -222,15 +224,98 @@ static void add_vlans_to_pool() {
 			"VLAN_ID", BCON_INT32(vlan_list[i].vlan),
 			"v4addrmask", BCON_UTF8(vlan_list[i].v4_nw),
 			"v6addrmask", BCON_UTF8(vlan_list[i].v6_nw),
-			"MUDURL",BCON_UTF8("none"));
+			"Authority",BCON_UTF8("none"));
       
     mongoc_collection_insert_one(vlan_collection, filter, NULL, NULL, NULL);
     bson_destroy(filter);
   }
-  mongoc_cursor_destroy (cursor);
+  if ( cursor != NULL) 
+    mongoc_cursor_destroy (cursor);
 }
 
-#endif /* MUD_LATER_RELEASE */
+/* find a vlan from a pool.  If already assigned, great.  If not, pick
+ * an available VLAN.  Otherwise return -1.
+ */
+
+static int find_vlan(manufacturer_list *manuf) {
+  bson_t *filter, *update=NULL, result;
+  const bson_t *record;
+  mongoc_cursor_t *cursor=NULL;
+  bson_error_t error;
+  char *found_str;
+  cJSON *found_json=NULL,*value_json=NULL;
+
+
+  if ( manuf->authority == NULL ) {
+    MUDC_LOG_ERR("find_vlan called with null authority");
+    return -1;
+  }
+
+  filter=BCON_NEW("Authority",manuf->authority);
+  cursor = mongoc_collection_find_with_opts(vlan_collection, filter,
+					    NULL, NULL);
+  if (mongoc_cursor_next(cursor, &record)) { /* found one */
+    found_str = bson_as_json(record, NULL);
+    found_json = cJSON_Parse(found_str);
+    bson_free(found_str);
+    if ((manuf->vlan=GETINT_JSONOBJ(found_json,"VLAN_ID")) < 1) {
+      MUDC_LOG_ERR("Bad value for VLAN_ID returned.");
+      goto errret;
+    }
+    manuf->vlan_nw_v4=GETSTR_JSONOBJ(found_json,"v4addrmask");
+    manuf->vlan_nw_v6=GETSTR_JSONOBJ(found_json,"v6addrmask");
+    mongoc_cursor_destroy(cursor);
+    bson_destroy(filter);
+    cJSON_Delete(found_json);
+    return manuf->vlan;
+  }
+
+  /* if we got here, that means no VLANs were found.  Find the first free
+   * one and use it.
+   */
+  bson_destroy(filter);
+  mongoc_cursor_destroy(cursor);
+  filter=BCON_NEW("Authority","none");
+  update=BCON_NEW("$set","{","Authority",BCON_UTF8(manuf->authority),"}");
+  if (!mongoc_collection_find_and_modify(vlan_collection, filter, NULL, update,
+				 NULL, false, false, true, &result,&error)) {
+    MUDC_LOG_ERR("Update: %s", error.message);
+    goto errret;
+  }
+  if ( update == NULL ) { 	/* no free entries */
+    goto errret;
+  }
+  found_str = bson_as_json(&result, NULL);
+  found_json = cJSON_Parse(found_str);
+
+  if ((value_json=cJSON_GetObjectItem(found_json,"value"))== NULL ) {
+      MUDC_LOG_ERR("Dude: database update failed.");
+      goto errret;
+  }
+  if ((manuf->vlan=GETINT_JSONOBJ(value_json,"VLAN_ID")) == 0) {
+      MUDC_LOG_ERR("Dude: database update failed.");
+      goto errret;
+  }
+
+  manuf->vlan_nw_v4=GETSTR_JSONOBJ(value_json,"v4addrmask");
+  manuf->vlan_nw_v6=GETSTR_JSONOBJ(value_json,"v6addrmask");
+
+  if (found_json != NULL)
+    cJSON_Delete(found_json);
+  bson_destroy(update);
+  bson_destroy(&result);
+  bson_destroy(filter);
+  return manuf->vlan;
+
+ errret:
+  if (found_json != NULL)
+    cJSON_Delete(found_json);
+  bson_destroy(filter);
+  bson_destroy(update);
+  bson_destroy(&result);
+  return -1;
+}
+
 
 static int read_mudmgr_config (char* filename) 
 {
@@ -269,9 +354,17 @@ static int read_mudmgr_config (char* filename)
     mudmgr_CAcert = GETSTR_JSONOBJ(config_json,"Enterprise_CACert");
     acl_list_prefix = GETSTR_JSONOBJ(config_json, "ACL_Prefix");
     acl_list_type_str = GETSTR_JSONOBJ(config_json, "ACL_Type");
+    manager_version= GETINT_JSONOBJ(config_json,"MUD_Manager_Version");
     default_vlan = GETINT_JSONOBJ(config_json, "Default_VLAN");
+    default_localv4=GETSTR_JSONOBJ(config_json, "Default_Localv4");
+    default_localv6=GETSTR_JSONOBJ(config_json, "Default_Localv6");
     if ((acl_list_type_str != NULL) && !strcmp(acl_list_type_str, "dACL-ingress-only")) {
         acl_list_type = INGRESS_ONLY_ACL;
+    }
+
+    if ( manager_version < 2 ) {
+      MUDC_LOG_ERR("MUD Config file version is either not set or not compatible");
+      goto err;
     }
 
     {   // moved if (!config_json) test earlier; skip moving below lines for now...
@@ -1184,11 +1277,25 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		if ((ctrl_json=cJSON_GetObjectItem(tmp_json, "local-networks"))){
                      MUDC_LOG_INFO("local-network  is V4 <%d>\n", is_v6);
                      if (is_v6) {
+		       if (manuf_list[manuf_index].local_nw_v6 == NULL) {
+			 if (default_localv6 == NULL) {
+			   MUDC_LOG_ERR("local-networks used with no available definition");
+			   goto err;
+			 } else
+			   acllist[acl_index].ace[ace_index].matches.addrmask=default_localv6;
+		       } else
                          acllist[acl_index].ace[ace_index].matches.addrmask = 
-			     manuf_list[manuf_index].local_nw_v6;
+			   manuf_list[manuf_index].local_nw_v6;
                      } else {
+		       if (manuf_list[manuf_index].local_nw_v4 == NULL) {
+			 if (default_localv4 == NULL) {
+			   MUDC_LOG_ERR("local-networks used with no available definition");
+			   goto err;
+			 } else
+			   acllist[acl_index].ace[ace_index].matches.addrmask=default_localv4;
+		       } else
                          acllist[acl_index].ace[ace_index].matches.addrmask = 
-			     manuf_list[manuf_index].local_nw_v4;
+			   manuf_list[manuf_index].local_nw_v4;
                      }
                 } 
 		
@@ -1235,8 +1342,12 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 
                 if (cJSON_GetObjectItem(tmp_json, "same-manufacturer")) {
                     if (manuf_list[manuf_index].vlan == 0 ) {
+		      /* see if we can allocate a VLAN.
+		       */
+		      if ((vlan=find_vlan(&manuf_list[manuf_index])) == -1 ) {
                    	 MUDC_LOG_INFO("VLAN is required but not configured for this Manufacturer\n");
                          goto err;
+		      }
                     }
 		    /* we need either a vlan_nw_v4 or vlan_nw_v6 */
 		    if (! (manuf_list[manuf_index].vlan_nw_v4 ||
@@ -2965,11 +3076,9 @@ int main(int argc, char *argv[])
     initialize_MongoDB();
     // Get any that are not listed in the DB into the DB.
 
-#ifdef MUD_LATER_RELEASE
     if ( num_vlans > 0 ) {
       add_vlans_to_pool();
     }
-#endif
 
 #if 0
     /* Use current binary directory as document root */
