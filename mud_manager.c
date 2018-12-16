@@ -33,7 +33,8 @@
 #define DACL_INGRESS_ONLY 1
 #define MAX_BUF 4096
 #define MAX_ACL_STATEMENTS 50
-#define MAX_ACE_STATEMENTS 50
+#define INITIAL_ACE_STATEMENTS 50
+#define MAX_ACE_STATEMENTS 300
 
 #define FROM_DEVICE 0
 #define TO_DEVICE 1
@@ -1095,15 +1096,15 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	 */
 
         acllist[acl_index].ace_count = 0;
-        acllist[acl_index].ace = (ACE*) calloc(MAX_ACE_STATEMENTS, sizeof(ACE));
-	alloced_aces=MAX_ACE_STATEMENTS; 
+        acllist[acl_index].ace = (ACE*) calloc(INITIAL_ACE_STATEMENTS, sizeof(ACE));
+	alloced_aces=INITIAL_ACE_STATEMENTS; 
 	/*
 	 * Loop through "ace" statements in this ACL.
 	 */
-	/*	if (cJSON_GetArraySize(ace_json) > MAX_ACE_STATEMENTS) {
-	    MUDC_LOG_ERR("Too many ACE statements: %d", cJSON_GetArraySize(ace_json));
+	if (cJSON_GetArraySize(ace_json) > MAX_ACE_STATEMENTS) {
+	    MUDC_LOG_ERR("A silly amount of ACE statements: %d", cJSON_GetArraySize(ace_json));
 	    goto err;
-	    }*/
+	    }
         for (ace_loc = 0; ace_loc < cJSON_GetArraySize(ace_json);
 		ace_loc++) {
 
