@@ -84,6 +84,12 @@ typedef struct _vlan_info {
   char *v4_nw;
   char *v6_nw;
 } vlan_info;
+
+typedef struct _addrlist {
+  char *address;
+  struct _addrlist *next;
+} addrlist;
+
   
 typedef struct _request_context {
     struct mg_connection *in;
@@ -561,12 +567,13 @@ err:
  *
  */
 
-static char* convert_dns_to_ip(char *dnsname, int flag) 
+static addrlist* convert_dns_to_ip(char *dnsname, int flag)
 {
     char* ipaddr = NULL;
     char *result = NULL;
     cJSON *map_json = NULL;
-    struct addrinfo hints,*res;
+    struct addrinfo hints,*res, *rtmp;
+    addrlist *addrs=NULL,*a;
     int r;
 
     if (dnsname == NULL) {
@@ -591,29 +598,72 @@ static char* convert_dns_to_ip(char *dnsname, int flag)
       ipaddr = GETSTR_JSONOBJ(map_json, dnsname);
       if (ipaddr != NULL) { 
 	strncpy(result,ipaddr,INET6_ADDRSTRLEN);
-	return(result);
+
+	/* return a list of one.  No support for multiple addresses
+	 * this way yet
+	 */
+	if ( (addrs=calloc(sizeof(addrlist),1)) == NULL) {
+	  MUDC_LOG_ERR("convert_dns_to_ip: calloc");
+	  free(result);
+	  return NULL;
+	}
+	addrs->address=result;
+	return(addrs);
       }
     }
     /* do a lookup here. */
     memset(&hints,0,sizeof(struct addrinfo));
     hints.ai_family=flag;
+    hints.ai_socktype=SOCK_DGRAM; /* whatever.  just want one */
     if ((r=getaddrinfo(dnsname,NULL,&hints,&res)) != 0) {
       MUDC_LOG_ERR("Error retrieving IP address for %s: %s",dnsname,
 		   gai_strerror(r));
       free(result);
       return(NULL);
     }
-    /* hostname(s) found.  XXX right now we can only handle one
-     * hostname in response.  Better than none.
+    /* hostname(s) found.  Create a linked list of addresses.
      */
-    if ( inet_ntop(flag, &res->ai_addr,result, INET6_ADDRSTRLEN) == NULL) {
-      free(result);
-      freeaddrinfo(res);
-      MUDC_LOG_ERR("inet_ntop");
-      return(NULL);
+
+    /* for simplicity, free result here. */
+    free(result);
+    /* allocate the first member ; we have at least one */
+
+    if ( (addrs=calloc(sizeof(addrlist),1)) == NULL) {
+	  MUDC_LOG_ERR("convert_dns_to_ip: calloc");
+	  free(result);
+	  return NULL;
+    }
+    for (rtmp=res,a=addrs; rtmp !=NULL; rtmp=rtmp->ai_next) {
+
+      /* get some space for the name. */
+
+      if ((a->address=(char *)malloc(sizeof(char)*INET6_ADDRSTRLEN)) == NULL) {
+	MUDC_LOG_ERR("malloc");
+	freeaddrinfo(res);
+	return(NULL);
+      }
+
+      /* get the name */
+
+      if ( inet_ntop(flag, &rtmp->ai_addr,a->address,
+		     INET6_ADDRSTRLEN) == NULL) {
+	free(result);
+	freeaddrinfo(res);
+	MUDC_LOG_ERR("inet_ntop");
+	return(NULL);
+      }
+      /* if there's another, get another addrlist entry */
+
+      if ((rtmp->ai_next != NULL) &&
+	     (a->next=calloc(sizeof(addrlist),1)) == NULL) {
+	  MUDC_LOG_ERR("convert_dns_to_ip: calloc");
+	  free(result);
+	  return NULL;
+      }
+      a=a->next;
     }
     freeaddrinfo(res);
-    return(result);
+    return(addrs);
 }
 
 static char* convert_controller_to_ip(char *ctrlname, int flag) 
@@ -996,7 +1046,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
     int alloced_aces,alloced_acls;
     char *type=NULL;
     int cache_in_hours = 0;
-    int ignore_ace=0, ace_loc=0;
+    int ignore_ace=0, ace_loc=0, no_mud=0;
     time_t timer;
     time_t exptime;
 
@@ -1144,7 +1194,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	    }
         for (ace_loc = 0; ace_loc < cJSON_GetArraySize(ace_json);
 		ace_loc++) {
-
+	  int found_v6=0;
             aceitem_json = cJSON_GetArrayItem(ace_json, ace_loc);
             if (!aceitem_json) {
 	    	MUDC_LOG_ERR("ACE list is corrupted");
@@ -1172,78 +1222,6 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	     *
 	     * Several ACL types are supported. Look for each in turn
 	     */
-
-	    /*
-	     * ipv4
-	     */
-	    if ((tmp_json=cJSON_GetObjectItem(matches_json, "ipv4"))) {
-	      char *r=NULL;
-		if (is_v6) {
-		    MUDC_LOG_ERR("Got an ipv4 protocol in an ipv6 ACL\n");
-		    goto err;
-		} else {
-		    MUDC_LOG_INFO("Processing an ipv4 protocol\n");
-		}
-
-		/* Look for "protocol" (required) */
-                acllist[acl_index].ace[ace_index].matches.protocol = 
-		    GETINT_JSONOBJ(tmp_json, "protocol");
-		if (acllist[acl_index].ace[ace_index].matches.protocol == 0) {
-		    MUDC_LOG_ERR("Protocol not found in ACE.\n");
-		    goto err;
-		} 
-
-		/* Check for MUD DNS name extensions */
-                if ((tmp_2_json=cJSON_GetObjectItem(tmp_json,
-			    "ietf-acldns:src-dnsname"))) {
-		  r=convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
-		  if ( r == NULL ) {
-		    MUDC_LOG_ERR("Unable to get IP address of %s",
-				 tmp_2_json->valuestring);
-		    goto err;
-		  }
-                } else if ((tmp_2_json=cJSON_GetObjectItem(tmp_json, 
-			    "ietf-acldns:dst-dnsname"))) {
-		  r=convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
-		  if ( r == NULL ) {
-		    MUDC_LOG_ERR("Unable to get IP address of %s",
-				 tmp_2_json->valuestring);
-		    goto err;
-		  }
-                }
-		if (r != NULL) {
-		  acllist[acl_index].ace[ace_index].matches.dnsname = r;
-		}
-	    }
-
-	    /*
-	     * ipv6
-	     */
-	    if ((tmp_json=cJSON_GetObjectItem(matches_json, "ipv6"))) {
-		if (!is_v6) {
-		    MUDC_LOG_ERR("Got an ipv6 protocl in an ipv4 ACL\n");
-		    goto err;
-		} else {
-		    MUDC_LOG_INFO("Processing an ipv6 protocol\n");
-		}
-		
-		/* Look for "protocol" (required) */
-                acllist[acl_index].ace[ace_index].matches.protocol = 
-		    GETINT_JSONOBJ(tmp_json, "protocol");
-
-		/* Check for MUD DNS name extensions */
-                if ((tmp_2_json=cJSON_GetObjectItem(tmp_json, 
-			    "ietf-acldns:src-dnsname"))) {
-                    acllist[acl_index].ace[ace_index].matches.dnsname = 
-			convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
-                } else if ((tmp_2_json=cJSON_GetObjectItem(tmp_json, 
-			    "ietf-acldns:dst-dnsname"))) {
-                    acllist[acl_index].ace[ace_index].matches.dnsname = 
-			convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
-                } else {
-                    acllist[acl_index].ace[ace_index].matches.dnsname = "any";
-                }
-	    }
 
 	    /*
 	     * tcp
@@ -1338,9 +1316,82 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	    }
 
 	    /*
+	     * ipv4 or ipv6
+	     */
+	    tmp_json=cJSON_GetObjectItem(matches_json, "ipv6");
+	    if ( tmp_json != NULL )
+	      found_v6++;
+	    else
+	      tmp_json=cJSON_GetObjectItem(matches_json, "ipv4");
+
+	    if ( tmp_json != NULL ) {
+	      addrlist *r=NULL;
+	      no_mud++;
+	      if ((found_v6 && ! is_v6) || (!found_v6 && is_v6)) {
+		    MUDC_LOG_ERR("Got mixed ipv4/6 ACEs in ACL\n");
+		    goto err;
+	      }
+	      MUDC_LOG_INFO("Processing an %s protocol\n", is_v6? "v6" : "v4");
+	      /* Look for "protocol" (required) */
+	      acllist[acl_index].ace[ace_index].matches.protocol =
+		GETINT_JSONOBJ(tmp_json, "protocol");
+	      if (acllist[acl_index].ace[ace_index].matches.protocol == 0) {
+		MUDC_LOG_ERR("Protocol not found in ACE.\n");
+		goto err;
+	      }
+
+	      /* Check for MUD DNS name extensions */
+	      if ((tmp_2_json=cJSON_GetObjectItem(tmp_json,
+				   "ietf-acldns:src-dnsname"))) {
+		r=convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
+		if ( r == NULL ) {
+		  MUDC_LOG_ERR("Unable to get IP address of %s",
+			       tmp_2_json->valuestring);
+		  goto err;
+		}
+	      } else if ((tmp_2_json=cJSON_GetObjectItem(tmp_json,
+			    "ietf-acldns:dst-dnsname"))) {
+		r=convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
+		if ( r == NULL ) {
+		  MUDC_LOG_ERR("Unable to get IP address of %s",
+			       tmp_2_json->valuestring);
+		  goto err;
+		}
+	      }
+	      while (r != NULL) { /* copy ace entries as necessary
+				   * be sure to not do mud entries.
+				   */
+		acllist[acl_index].ace[ace_index].matches.dnsname =
+		  r->address;
+		if (r->next != NULL) {
+		  /* check space */
+		  ace_index++;
+		  if ( alloced_aces<=ace_index ) {
+		    ACE *tmpace=acllist[acl_index].ace;
+		    if ( make_room(&tmpace,
+				   alloced_aces*sizeof(ACE),
+				   (alloced_aces+10)*sizeof(ACE)) == -1 ) {
+		      MUDC_LOG_ERR("Not enough memory to realloc");
+		      goto err;
+		    }
+		    alloced_aces+=10;
+		  }
+		  /* now bcopy previous entry to capture 
+		   * UDP/TCP properties.
+		   */
+		  bcopy(&(acllist[acl_index].ace[ace_index-1]),
+			&(acllist[acl_index].ace[ace_index]),
+			sizeof(ACE));
+		}
+		r=r->next;
+	      }
+	    }
+
+	    /*
 	     * ietf-mud:mud
 	     */
-	    if ((tmp_json=cJSON_GetObjectItem(matches_json, "ietf-mud:mud"))) {
+	    if ( (!no_mud)
+		 && (tmp_json=cJSON_GetObjectItem(matches_json, "ietf-mud:mud"))) {
 	        MUDC_LOG_INFO("Processing a ietf-mud:mud protocol\n");
                 if ((ctrl_json=cJSON_GetObjectItem(tmp_json, "controller"))) {
                     acllist[acl_index].ace[ace_index].matches.dnsname = 
@@ -1490,6 +1541,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	       acllist[acl_index].ace[ace_index].matches.dir_initiated= 0;
 	       ignore_ace=0;
 	     }
+	     no_mud=0;
 	}
 	break; 			/* we don't need to continue the inner
 				 * loop once we've matched an ACL name
