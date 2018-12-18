@@ -5,6 +5,9 @@
 
 #include <signal.h>
 #include <civetweb.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
 #include <openssl/x509v3.h>
 #include <openssl/err.h>
 #include <openssl/asn1.h>
@@ -551,32 +554,66 @@ err:
     return ret;
 }
 
-/* For Demo only.  Needs to be changed*/
+/*
+ * Use getaddrinfo() to get the IP address of a domain name.  This
+ * is imperfect because that map may change (perhaps quickly).  As
+ * a backstop, use the map in the JSON file.
+ *
+ */
+
 static char* convert_dns_to_ip(char *dnsname, int flag) 
 {
     char* ipaddr = NULL;
+    char *result = NULL;
     cJSON *map_json = NULL;
+    struct addrinfo hints,*res;
+    int r;
 
     if (dnsname == NULL) {
         MUDC_LOG_ERR("DNS Name NULL");
         return NULL;
     }
     if (flag) {
-        map_json = dnsmap_v6_json;
+      flag=AF_INET6;
+      map_json = dnsmap_v6_json;
     } else {
-        map_json = dnsmap_json;
+      flag=AF_INET;
+      map_json = dnsmap_json;
     }  
 
+    if ((result=(char *)malloc(sizeof(char)*INET6_ADDRSTRLEN)) == NULL) {
+      MUDC_LOG_ERR("malloc");
+      return(NULL);
+    }
     if (map_json == NULL) {
-        MUDC_LOG_ERR("Missing mapping table");
-        return(NULL);
+        MUDC_LOG_INFO("Missing mapping table");
+    } else {
+      ipaddr = GETSTR_JSONOBJ(map_json, dnsname);
+      if (ipaddr != NULL) { 
+	strncpy(result,ipaddr,INET6_ADDRSTRLEN);
+	return(result);
+      }
     }
-
-    ipaddr = GETSTR_JSONOBJ(map_json, dnsname);
-    if (ipaddr == NULL) { 
-        MUDC_LOG_ERR("Missing DNS Mapping for: %s", dnsname);
+    /* do a lookup here. */
+    memset(&hints,0,sizeof(struct addrinfo));
+    hints.ai_family=flag;
+    if ((r=getaddrinfo(dnsname,NULL,&hints,&res)) != 0) {
+      MUDC_LOG_ERR("Error retrieving IP address for %s: %s",dnsname,
+		   gai_strerror(r));
+      free(result);
+      return(NULL);
     }
-    return(ipaddr);
+    /* hostname(s) found.  XXX right now we can only handle one
+     * hostname in response.  Better than none.
+     */
+    if ( inet_ntop(flag, &res->ai_addr,result, INET6_ADDRSTRLEN) == NULL) {
+      free(result);
+      freeaddrinfo(res);
+      MUDC_LOG_ERR("inet_ntop");
+      return(NULL);
+    }
+    freeaddrinfo(res);
+    return(result);
 }
 
 static char* convert_controller_to_ip(char *ctrlname, int flag) 
@@ -1140,6 +1177,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	     * ipv4
 	     */
 	    if ((tmp_json=cJSON_GetObjectItem(matches_json, "ipv4"))) {
+	      char *r=NULL;
 		if (is_v6) {
 		    MUDC_LOG_ERR("Got an ipv4 protocol in an ipv6 ACL\n");
 		    goto err;
@@ -1156,15 +1194,26 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		} 
 
 		/* Check for MUD DNS name extensions */
-                if ((tmp_2_json=cJSON_GetObjectItem(tmp_json, 
+                if ((tmp_2_json=cJSON_GetObjectItem(tmp_json,
 			    "ietf-acldns:src-dnsname"))) {
-                    acllist[acl_index].ace[ace_index].matches.dnsname = 
-			convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
+		  r=convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
+		  if ( r == NULL ) {
+		    MUDC_LOG_ERR("Unable to get IP address of %s",
+				 tmp_2_json->valuestring);
+		    goto err;
+		  }
                 } else if ((tmp_2_json=cJSON_GetObjectItem(tmp_json, 
 			    "ietf-acldns:dst-dnsname"))) {
-                    acllist[acl_index].ace[ace_index].matches.dnsname = 
-			convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
-                } 
+		  r=convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
+		  if ( r == NULL ) {
+		    MUDC_LOG_ERR("Unable to get IP address of %s",
+				 tmp_2_json->valuestring);
+		    goto err;
+		  }
+                }
+		if (r != NULL) {
+		  acllist[acl_index].ace[ace_index].matches.dnsname = r;
+		}
 	    }
 
 	    /*
