@@ -144,7 +144,7 @@ For each VLAN there needs to be a statement such as "192.168.1.0 0.0.0.255" (or 
 
 #### DNSMapping, DNSMapping_v6
 
-If a MUD file has a DNS name in it, and the name needs to be translated to an IP address, the translation can be set here.
+If a MUD file has a DNS name in it, and that name is not resolvable (say because you are doing testing), you can add a translation here.  If you do not, a DNS lookup will be performed.
 
 #### ControllerMapping, ControllerMapping_v6
 
