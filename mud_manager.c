@@ -413,84 +413,63 @@ static int read_mudmgr_config (char* filename)
 
         manuf_json = cJSON_GetObjectItem(config_json, "Manufacturers");
         if (manuf_json == NULL) {
-            MUDC_LOG_ERR("Error before: [%s]", cJSON_GetErrorPtr());
-            goto err;
+            MUDC_LOG_INFO("No Manufacturers.  Will add them dynamically, but my-controller will not work");
         } else {
             num_manu = cJSON_GetArraySize(manuf_json);
-            if (num_manu <=0) {
-                MUDC_LOG_ERR("Missing Manufacturer config") ;
-                goto err;
-            }
             for(i=0; i < num_manu; i++) {
                 tmp_json = cJSON_GetArrayItem(manuf_json, i);
-                if (tmp_json != NULL) {
-                    cacert_json = cJSON_GetObjectItem(tmp_json, "cert");
-                    if (cacert_json != NULL) {
-                        manuf_list[i].certfile = GETSTR_JSONOBJ(tmp_json, "cert");
-                        if (manuf_list[i].certfile != NULL) {
-                            certin = BIO_new_file(manuf_list[i].certfile, "r");
-                            if (certin != NULL) {
-                                manuf_list[i].cert = PEM_read_bio_X509(certin, NULL, NULL, NULL);
-                                BIO_free(certin);
-                                if (manuf_list[i].cert != NULL) {
-                                    MUDC_LOG_INFO("Successfully read Manufacture %d cert", i);
-                                } else {
-                                    MUDC_LOG_ERR("Missing CA certificate: Failed reading cert");
-                                    goto err;
-                                }
-                            } else {
-                                MUDC_LOG_ERR("Missing CA certificate: Certificate file missing");
-                                goto err;
-                            }
-                        } else {
-                            MUDC_LOG_ERR("Missing CA certificate: JSON Entry missing");
-                            goto err;
-                        }
-                    } else {
-                        MUDC_LOG_ERR("Missing Manufacturer: JSON Entry missing");
-                        goto err;
-                    }
-
+		cacert_json = cJSON_GetObjectItem(tmp_json, "cert");
+		if (cacert_json != NULL) {
+		  manuf_list[i].certfile = GETSTR_JSONOBJ(tmp_json, "cert");
+		  if (manuf_list[i].certfile != NULL) {
+		    certin = BIO_new_file(manuf_list[i].certfile, "r");
+		    if (certin != NULL) {
+		      manuf_list[i].cert = PEM_read_bio_X509(certin, NULL, NULL, NULL);
+		      BIO_free(certin);
+		      if (manuf_list[i].cert != NULL) {
+			MUDC_LOG_INFO("Successfully read Manufacture %d cert", i);
+		      } else {
+			MUDC_LOG_ERR("Missing CA certificate: Failed reading cert");
+			goto err;
+		      }
+		    } else {
+		      MUDC_LOG_ERR("Missing CA certificate: Certificate file missing");
+		      goto err;
+		    }
+		  }
 		    /*
 		     * There may be a different CA certification for the web
 		     * server. This is optional.
 		     */
-                    cacert_json = cJSON_GetObjectItem(tmp_json, "web_cert");
-                    if (cacert_json != NULL) {
-                        manuf_list[i].web_certfile = GETSTR_JSONOBJ(tmp_json, "web_cert");
-                        if (manuf_list[i].web_certfile != NULL) {
-                            certin = BIO_new_file(manuf_list[i].web_certfile, "r");
-                            if (certin != NULL) {
-                                manuf_list[i].web_cert = PEM_read_bio_X509(certin, NULL, NULL, NULL);
-                                BIO_free(certin);
-                                if (manuf_list[i].web_cert != NULL) {
-                                    MUDC_LOG_INFO("Successfully read Manufacture web %d cert", i);
-                                } else {
-                                    MUDC_LOG_ERR("Missing Web CA certificate: Failed reading cert");
-                                    goto err;
-                                }
-                            } else {
-                                MUDC_LOG_ERR("Missing Web CA certificate: Certificate file missing");
-                                goto err;
-                            }
-                        } else {
-                            MUDC_LOG_ERR("Missing Web CA certificate: JSON Entry missing");
-                            goto err;
-                        }
-		    };
-                    manuf_list[i].vlan = GETINT_JSONOBJ(tmp_json, "vlan");
-		    manuf_list[i].vlan_nw_v4 = GETSTR_JSONOBJ(tmp_json, "vlan_nw_v4");
-		    manuf_list[i].vlan_nw_v6 = GETSTR_JSONOBJ(tmp_json, "vlan_nw_v4");
-                    manuf_list[i].authority= GETSTR_JSONOBJ(tmp_json, "authority");
-                    manuf_list[i].https_port = GETSTR_JSONOBJ(tmp_json, "https_port");
-                    manuf_list[i].my_ctrl_v4 = GETSTR_JSONOBJ(tmp_json, "my_controller_v4");
-                    manuf_list[i].my_ctrl_v6 = GETSTR_JSONOBJ(tmp_json, "my_controller_v6");
-                    manuf_list[i].local_nw_v4 = GETSTR_JSONOBJ(tmp_json, "local_networks_v4");
-                    manuf_list[i].local_nw_v6 = GETSTR_JSONOBJ(tmp_json, "local_networks_v6");
-                } else {
-                    MUDC_LOG_ERR("Missing Manufacturer Entries");
-                    goto err;
+		  cacert_json = cJSON_GetObjectItem(tmp_json, "web_cert");
+		  if (cacert_json != NULL) {
+		    manuf_list[i].web_certfile = GETSTR_JSONOBJ(tmp_json, "web_cert");
+		    certin = BIO_new_file(manuf_list[i].web_certfile, "r");
+		    if (certin != NULL) {
+			manuf_list[i].web_cert = PEM_read_bio_X509(certin, NULL, NULL, NULL);
+			BIO_free(certin);
+			if (manuf_list[i].web_cert != NULL) {
+			  MUDC_LOG_INFO("Successfully read Manufacture web %d cert", i);
+			} else {
+			  MUDC_LOG_ERR("Missing Web CA certificate: Failed reading cert");
+			  goto err;
+			}
+		      } else {
+			MUDC_LOG_ERR("Missing Web CA certificate: Certificate file missing");
+			goto err;
+		      }
+		    }
                 }
+
+		manuf_list[i].vlan = GETINT_JSONOBJ(tmp_json, "vlan");
+		manuf_list[i].vlan_nw_v4 = GETSTR_JSONOBJ(tmp_json, "vlan_nw_v4");
+		manuf_list[i].vlan_nw_v6 = GETSTR_JSONOBJ(tmp_json, "vlan_nw_v4");
+		manuf_list[i].authority= GETSTR_JSONOBJ(tmp_json, "authority");
+		manuf_list[i].https_port = GETSTR_JSONOBJ(tmp_json, "https_port");
+		manuf_list[i].my_ctrl_v4 = GETSTR_JSONOBJ(tmp_json, "my_controller_v4");
+		manuf_list[i].my_ctrl_v6 = GETSTR_JSONOBJ(tmp_json, "my_controller_v6");
+		manuf_list[i].local_nw_v4 = GETSTR_JSONOBJ(tmp_json, "local_networks_v4");
+		manuf_list[i].local_nw_v6 = GETSTR_JSONOBJ(tmp_json, "local_networks_v6");
             }
         }
 
@@ -574,6 +553,7 @@ static addrlist* convert_dns_to_ip(char *dnsname, int flag)
     cJSON *map_json = NULL;
     struct addrinfo hints,*res, *rtmp;
     addrlist *addrs=NULL,*a;
+    void *ptr=NULL;
     int r;
 
     if (dnsname == NULL) {
@@ -611,26 +591,25 @@ static addrlist* convert_dns_to_ip(char *dnsname, int flag)
 	return(addrs);
       }
     }
+
+    /* for simplicity, free result here. */
+    free(result);
     /* do a lookup here. */
     memset(&hints,0,sizeof(struct addrinfo));
     hints.ai_family=flag;
-    hints.ai_socktype=SOCK_DGRAM; /* whatever.  just want one */
+    hints.ai_socktype=SOCK_STREAM; /* whatever.  just want one */
     if ((r=getaddrinfo(dnsname,NULL,&hints,&res)) != 0) {
       MUDC_LOG_ERR("Error retrieving IP address for %s: %s",dnsname,
 		   gai_strerror(r));
-      free(result);
       return(NULL);
     }
     /* hostname(s) found.  Create a linked list of addresses.
      */
 
-    /* for simplicity, free result here. */
-    free(result);
     /* allocate the first member ; we have at least one */
 
     if ( (addrs=calloc(sizeof(addrlist),1)) == NULL) {
 	  MUDC_LOG_ERR("convert_dns_to_ip: calloc");
-	  free(result);
 	  return NULL;
     }
     for (rtmp=res,a=addrs; rtmp !=NULL; rtmp=rtmp->ai_next) {
@@ -644,10 +623,17 @@ static addrlist* convert_dns_to_ip(char *dnsname, int flag)
       }
 
       /* get the name */
-
-      if ( inet_ntop(flag, &rtmp->ai_addr,a->address,
+      switch(rtmp->ai_family) 
+	{
+	case AF_INET:
+	  ptr=&((struct sockaddr_in *) rtmp->ai_addr)->sin_addr;
+	  break;
+	case AF_INET6:
+	  ptr = &((struct sockaddr_in6 *) rtmp->ai_addr)->sin6_addr;
+	  break;
+	}
+      if ( inet_ntop(flag, ptr,a->address,
 		     INET6_ADDRSTRLEN) == NULL) {
-	free(result);
 	freeaddrinfo(res);
 	MUDC_LOG_ERR("inet_ntop");
 	return(NULL);
@@ -657,7 +643,6 @@ static addrlist* convert_dns_to_ip(char *dnsname, int flag)
       if ((rtmp->ai_next != NULL) &&
 	     (a->next=calloc(sizeof(addrlist),1)) == NULL) {
 	  MUDC_LOG_ERR("convert_dns_to_ip: calloc");
-	  free(result);
 	  return NULL;
       }
       a=a->next;
@@ -1326,7 +1311,6 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 
 	    if ( tmp_json != NULL ) {
 	      addrlist *r=NULL;
-	      no_mud++;
 	      if ((found_v6 && ! is_v6) || (!found_v6 && is_v6)) {
 		    MUDC_LOG_ERR("Got mixed ipv4/6 ACEs in ACL\n");
 		    goto err;
@@ -1343,6 +1327,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	      /* Check for MUD DNS name extensions */
 	      if ((tmp_2_json=cJSON_GetObjectItem(tmp_json,
 				   "ietf-acldns:src-dnsname"))) {
+		no_mud++;
 		r=convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
 		if ( r == NULL ) {
 		  MUDC_LOG_ERR("Unable to get IP address of %s",
@@ -1351,6 +1336,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		}
 	      } else if ((tmp_2_json=cJSON_GetObjectItem(tmp_json,
 			    "ietf-acldns:dst-dnsname"))) {
+		no_mud++;
 		r=convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
 		if ( r == NULL ) {
 		  MUDC_LOG_ERR("Unable to get IP address of %s",
@@ -1426,14 +1412,23 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		if ((ctrl_json=cJSON_GetObjectItem(tmp_json, "my-controller"))) {
                     MUDC_LOG_INFO("My controller is V4 <%d>\n", is_v6);
                     if (is_v6) {
+		      if (manuf_list[manuf_index].my_ctrl_v6 != NULL) {
                         acllist[acl_index].ace[ace_index].matches.dnsname = 
-			      manuf_list[manuf_index].my_ctrl_v6;
+			  manuf_list[manuf_index].my_ctrl_v6;
+		      } else
+			ignore_ace++;
                     } else {
+		      if (manuf_list[manuf_index].my_ctrl_v4 != NULL) {
                         acllist[acl_index].ace[ace_index].matches.dnsname = 
 			      manuf_list[manuf_index].my_ctrl_v4;
+		      } else
+			ignore_ace++;
                     }
+		    if (ignore_ace)
+		      MUDC_LOG_INFO("my-controller is requested for %s, but not listed in config.  Ignoring this ACE",manuf_list[manuf_index].authority);
 		}
-               if ((ctrl_json=cJSON_GetObjectItem(tmp_json, "manufacturer"))) {
+
+               if (!ignore_ace && (ctrl_json=cJSON_GetObjectItem(tmp_json, "manufacturer"))) {
 		 char *mfgr=ctrl_json->valuestring;
 		 int i;
 		 /* we need to loop through manuf_list, figure out the VLAN
@@ -1502,7 +1497,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	    /*
 	     * Sanity checks.
 	     */
-            if ((acllist[acl_index].ace[ace_index].matches.dnsname == NULL)
+            if (!ignore_ace &&(acllist[acl_index].ace[ace_index].matches.dnsname == NULL)
 		&& (acllist[acl_index].ace[ace_index].matches.addrmask == NULL)
 		&& !vlan) {
                  MUDC_LOG_ERR("ACL: %d, ACE: %d\n", acl_index, ace_index);
@@ -1823,8 +1818,9 @@ int verify_mud_content(char* smud, int slen, char* omud, int olen,
         ERR_print_errors_fp(stdout);
 	goto err;
     }
-    if (!X509_LOOKUP_load_file(lookup, manuf_list[manuf_index].certfile, 
-			       X509_FILETYPE_PEM)) {
+    if ( (manuf_list[manuf_index].certfile != NULL) && 
+	 (!X509_LOOKUP_load_file(lookup, manuf_list[manuf_index].certfile, 
+				 X509_FILETYPE_PEM))) {
 	MUDC_LOG_INFO("X509_LOOKUP failed. Aborting.");
         ERR_print_errors_fp(stdout);
 	goto err;
@@ -2188,7 +2184,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
     int i=0;
     int ret=0;
     cJSON *parsed_json=NULL, *masa_json=NULL;
-    char *webcacert;
+    char *webcacert=NULL;
 
     if (nc == NULL || base_uri == NULL) {
         MUDC_LOG_ERR("invalid parameters");
@@ -2233,14 +2229,31 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
 
     manuf_idx = find_manufacturer(ctx->uri);
     if (manuf_idx == -1) {
-        MUDC_LOG_ERR("Manufacturer not found: URI %s\n", requri);
-        send_error_result(nc, 204, "{\"MSG\":\"No ACL for this device\"}");
-        goto err;
+      char *newname,*end;
+      if (num_manu >= MAX_MANUF) {
+	MUDC_LOG_ERR("Unable to dynamically add manufacturer.  Already at max %d",num_manu);
+	goto err;
+      }
+      MUDC_LOG_INFO("Manufacturer URI %s not found.  Adding entry.", ctx->uri);
+
+      /* find authority in URL.. skip to 2nd / */
+      if ((( newname=index(base_uri,'/')) == NULL) || (*(++newname) != '/')) {
+	MUDC_LOG_ERR("This ain\'t no stinking URL: %s",base_uri);
+	goto err;
+      }
+      /* skip past that slash and find the end of authority */
+      if ((end=index(++newname,'/'))== NULL) { /* no file? */
+	MUDC_LOG_ERR("This ain\'t no stinking URL: %s",base_uri);
+	goto err;
+      }
+      memset(&manuf_list[num_manu],0,sizeof(manufacturer_list));
+      manuf_list[num_manu].authority=strndup(newname,end-newname);
+      manuf_idx=num_manu++;
     }
-    
+
     if (manuf_list[manuf_idx].web_certfile) {
 	webcacert = manuf_list[manuf_idx].web_certfile;
-    } else {
+    } else if (manuf_list[manuf_idx].certfile) {
 	webcacert = manuf_list[manuf_idx].certfile;
     }
 
@@ -2249,7 +2262,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
      * The message below isn't an error, but it gives context to the libcurl
      * messages and CoA messages, which aren't so easily suppressed.
      */
-    MUDC_LOG_STATUS("\nRequest URI <%s> <%s>\n", requri, webcacert);
+    MUDC_LOG_STATUS("\nRequest URI <%s>\n", requri);
 
     response = fetch_file(curl, requri, &response_len, "mud+json",
 	    		  webcacert);
@@ -3188,6 +3201,8 @@ int main(int argc, char *argv[])
         MUDC_LOG_ERR("Error reading config file\n");
         return 1;
     }
+
+    curl_global_init(0);
 
     if (strcmp(mudmgr_server, "https") == 0 ) {
         MUDC_LOG_INFO("Cert %s, %s,  %s\n", mudmgr_cert, mudmgr_key, mudmgr_CAcert);
