@@ -156,7 +156,9 @@ char *fetch_file(CURL *curl, char *get_url,
     curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteMemoryCallback);
     curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
 
-    curl_easy_setopt(curl, CURLOPT_CAINFO, fs_ca_cert);
+    curl_easy_setopt(curl,CURLOPT_CAPATH,"/etc/ssl/certs");
+    if ( fs_ca_cert != NULL)
+      curl_easy_setopt(curl, CURLOPT_CAINFO, fs_ca_cert);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
     
     if (!strcmp(response_app_string,"mud+json")) {

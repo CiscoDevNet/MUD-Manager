@@ -1,13 +1,21 @@
 {
+        "MUD_Manager_Version" : 2,
 	"MUDManagerAPIProtocol" : "http",
 	"ACL_Prefix" : "ACS:",
 	"ACL_Type" : "dACL-ingress-only",
 	"COA_Password" : "mudtester",
+        "Default_Localv4": "10.0.0.0 0.255.255.255",
+        "Default_VLAN" : 2,
+        "VLANs" : [
+           {
+	      "VLAN_ID" : 5,
+	      "v4addrmask": "10.1.2.0 0.0.0.255",
+  	   },
 	"Manufacturers" : [ 
 		{ "authority" : "luminaire.example.com",
                   "cert": "/home/mudtester/luminaire-cacert.pem",
 		  "my_controller_v4" : "10.1.1.4",
-		  "local_networks_v4" : "255.255.255.255"
+		  "local_networks_v4" : "10.1.1.0 0.0.0.255"
 	 	}
 	 ],
 	"DNSMapping" : {
