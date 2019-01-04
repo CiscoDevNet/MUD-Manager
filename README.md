@@ -106,6 +106,21 @@ In some cases, a RADIUS server will complete an  Authentication exchange for a d
 
 For the CoA to succeed, the MUD Manager must share a password with the NAD. Replace the sample password provided in the configuration file with the password you use on the NAD.
 
+### VLANs
+
+If the "VLANs" array is present, it consists of a pool of VLANs
+available for assignment when "same-manufacturer" is present for a
+given authority.  These will be automatically assigned, and stored in
+MUD-Manager's internal database.  If they are removed from the
+configuration file, they will *still* be used.  Each array entry consists of the following elements:
+
+ * VLAN_ID: the value of the VLAN to be used.
+ * v4addrmask: a string in the form of a dotted quad
+   and a wildcard mask also in the form of a dotted quad.  For example:
+   "v4addrmask" : "192.168.1.0 0.0.0.255"
+ * v6addrmask: a string in the form of a v6 network and a mask.
+ 
+
 ### Manufacturers
 
 This array of manufacturers is optional.  When present, it may contain information that includes an authority string, a set of certificates for validation, an optional VLAN, my-controller information for this particular instance, and any local network information to be used.  If NOT present, the MUD manager will press on, but my-controller statements will be ignored.  See below for more detail.
@@ -139,7 +154,7 @@ These are used to translate a "local-networks" statement found in a MUD file.
 
 If a "same-manufacturer" statement is found in the MUD file, this VLAN value is sent with the ACLs to the NAD. The same VLAN value should be conigured for each type of device from that manufacturer that needs to communicate.
 
-#### vlan_nw_v4, local_networks_v6
+#### v4addrmask, v6addrmask
 
 For each VLAN there needs to be a statement such as "192.168.1.0 0.0.0.255" (or equivalent v6) to permit acces to that VLAN.
 
