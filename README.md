@@ -112,7 +112,11 @@ If the "VLANs" array is present, it consists of a pool of VLANs
 available for assignment when "same-manufacturer" is present for a
 given authority.  These will be automatically assigned, and stored in
 MUD-Manager's internal database.  If they are removed from the
-configuration file, they will *still* be used.  Each array entry consists of the following elements:
+configuration file, they will *still* be used.  If a "vlan" field
+exists for a particular manufacturer, it will override the use of the
+pool.
+
+Each array entry consists of the following elements:
 
  * VLAN_ID: the value of the VLAN to be used.
  * v4addrmask: a string in the form of a dotted quad
@@ -152,11 +156,14 @@ These are used to translate a "local-networks" statement found in a MUD file.
 
 #### vlan
 
-If a "same-manufacturer" statement is found in the MUD file, this VLAN value is sent with the ACLs to the NAD. The same VLAN value should be conigured for each type of device from that manufacturer that needs to communicate.
+If a "same-manufacturer" statement is found in the MUD file, this VLAN
+value is sent with the ACLs to the NAD. This field generally should
+not be used.  Instead, create a group of VLAN entries in the VLANs
+array and allow MUD Manager to assign them.
 
 #### v4addrmask, v6addrmask
 
-For each VLAN there needs to be a statement such as "192.168.1.0 0.0.0.255" (or equivalent v6) to permit acces to that VLAN.
+For the VLAN there needs to be a statement such as "192.168.1.0 0.0.0.255" (or equivalent v6) to permit acces to that VLAN.
 
 #### DNSMapping, DNSMapping_v6
 
