@@ -10,7 +10,7 @@
 USAGE="usage: $0: [-v]"
 ALL=0
 
-while getopts a c; do
+while getopts v c; do
     case "$c" in
     v)ALL=1; shift;;
     *)echo $USAGE; exit;;
