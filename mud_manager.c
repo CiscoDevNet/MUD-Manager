@@ -276,7 +276,7 @@ static int find_vlan(manufacturer_list *manuf) {
     manuf->vlan_nw_v6=GETSTR_JSONOBJ(found_json,"v6addrmask");
     mongoc_cursor_destroy(cursor);
     bson_destroy(filter);
-    cJSON_Delete(found_json);
+    /* do not cJSON_Delete(found_json) as we're still using that memory */
     return manuf->vlan;
   }
 
