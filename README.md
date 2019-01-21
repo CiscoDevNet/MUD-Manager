@@ -1,7 +1,12 @@
 ![alt text](https://github.com/CiscoDevNet/MUD-Manager/blob/master/MUDlogo.jpg)
 
 
-# MUD-Manager
+# MUD-Manager Version 2.0a1
+
+### N.B.: Stable release right now is 1.0.  This is the development branch.
+### A list of changes can be found down below.
+
+## Introduction
 
 Manufacturer Usage Description (MUD) is a technique whereby constrained end devices (e.g., IoT devices) can signal to the network what sort of access and network functionality they require to properly function. The end device performs this signaling by issuing a URL in LLDP, DHCP, or as part of an X.509 certificate. A MUD Manager is a service sitting in the network that receives the MUD URL, fetches a MUD file containing access requirements provided by a manufacturer, and creates Access Control Lists (ACLs) that can be installed on network equipment to allow that access.
 
@@ -217,6 +222,28 @@ The output should look something like this:
                 ACE: ip:inacl#30=permit udp any host 255.255.255.255 range 5683 5683
                 ACE: ip:inacl#40=permit tcp any eq 22 any
                 ACE: ip:inacl#41=deny ip any any
+
+# What's New for 2.0?
+
+The latest code contains a great many bug fixes and a number of
+additions.  Here's a brief list:
+
+ * Limit of 11 ACE lines removed.  Memory is now realloced as required.
+ * VLANs are pulled from a pool.  Manufacturer entries should not list them.
+ * The config file is now versioned.
+ * Add a default for local-networks
+ * Fix a memory corruption issue.
+ * Relax the idea that somehow "protocol" was required in the MUD file.
+ * Relax the MIME check on MUD files.  Yes, MUD File Servers should use 
+   application/json, but as most people are just going to use apache,
+   let's not be too pedantic.
+
+To begin with, you don't need to list a manufacturer in
+the config file.  Until you do, of course, the controller functions
+are quite limited.  We are also now using the updated MUD
+specification, reading in all the informational elements into the
+MongoDB.  This will become more important later on as we begin to
+offer at least something of a graphical interface to All of This.
 
 ## Contributers
 Rashmikant Shah
