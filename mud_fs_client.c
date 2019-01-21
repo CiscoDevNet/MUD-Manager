@@ -84,8 +84,8 @@ static size_t validateheaders(void *ptr, size_t size, size_t nmemb,
 	     * strings defined for MUD, so accept approximately-correct
 	     * responses with a warning.
 	     */
-	    if (strstr(contenttype, "json")) {
-	    	if (strstr(header, "json")) {
+	  if (strstr(contenttype, "json") || strstr(contenttype,"plain")) {
+	      if (strstr(header, "json") ) {
 	    	    MUDC_LOG_INFO("Warning: Web server sent unexpected (but "
 			          "similar) Content-Type.");
 	    	    MUDC_LOG_INFO("    expected=%s\n", header);

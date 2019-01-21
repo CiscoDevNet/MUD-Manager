@@ -274,9 +274,10 @@ static int find_vlan(manufacturer_list *manuf) {
     }
     manuf->vlan_nw_v4=GETSTR_JSONOBJ(found_json,"v4addrmask");
     manuf->vlan_nw_v6=GETSTR_JSONOBJ(found_json,"v6addrmask");
+
     mongoc_cursor_destroy(cursor);
     bson_destroy(filter);
-    /* do not cJSON_Delete(found_json) as we're still using that memory */
+    /* don't be so quick to destroy allocated memory here cJSON_Delete(found_json) */;
     return manuf->vlan;
   }
 
@@ -310,8 +311,8 @@ static int find_vlan(manufacturer_list *manuf) {
   manuf->vlan_nw_v4=GETSTR_JSONOBJ(value_json,"v4addrmask");
   manuf->vlan_nw_v6=GETSTR_JSONOBJ(value_json,"v6addrmask");
 
-  if (found_json != NULL)
-    cJSON_Delete(found_json);
+  /*  if (found_json != NULL)
+      cJSON_Delete(found_json);*/
   bson_destroy(update);
   bson_destroy(&result);
   bson_destroy(filter);
@@ -837,9 +838,10 @@ static bool update_mudfile_database(request_context *ctx, cJSON* full_json,
                                     time_t *exptime) 
 {
     bson_error_t error;
-    bson_t *query=NULL, *update=NULL;
+    bson_t *query=NULL, up_par, *up_child;
     cJSON *mud_json=NULL;
-    char *muduri=NULL, *lastupd=NULL, *sysinfo=NULL;
+    char *muduri=NULL, *lastupd=NULL, *sysinfo=NULL,*mfgr=NULL,*model=NULL,
+      *doc=NULL;
     int cachevalidity=0;
     char *full_str=NULL;
     cJSON *tmp_json = NULL;
@@ -854,6 +856,9 @@ static bool update_mudfile_database(request_context *ctx, cJSON* full_json,
     muduri = GETSTR_JSONOBJ(mud_json,"mud-url");
     lastupd = GETSTR_JSONOBJ(mud_json,"last-update");
     sysinfo = GETSTR_JSONOBJ(mud_json,"systeminfo");
+    mfgr = GETSTR_JSONOBJ(mud_json,"mfg-name");
+    model = GETSTR_JSONOBJ(mud_json,"model-name");
+    doc = GETSTR_JSONOBJ(mud_json,"documentation");
 
     tmp_json = cJSON_GetObjectItem(mud_json, "cache-validity");
     if (tmp_json == NULL) {
@@ -875,24 +880,34 @@ static bool update_mudfile_database(request_context *ctx, cJSON* full_json,
 
     full_str = cJSON_PrintUnformatted(full_json);
 
-    update = BCON_NEW( "$set", "{", 
+    bson_init(&up_par);
+    up_child = BCON_NEW(
                 "URI", BCON_UTF8(muduri),
                 "Last-update", BCON_UTF8(lastupd),
                 "Systeminfo", BCON_UTF8(sysinfo),
                 "Cache-Validity", BCON_INT32(cachevalidity),
                 "Expiry-Time", BCON_DATE_TIME(*exptime), 
-                "MUD_Content", BCON_UTF8(full_str),"}");
+                "MUD_Content", BCON_UTF8(full_str));
+
+    if ( mfgr != NULL)
+      BSON_APPEND_UTF8(up_child,"Manufacturer-Label",mfgr);
+    if (model != NULL)
+      BSON_APPEND_UTF8(up_child,"Manufacturer-Model",model);
+    if (doc != NULL)
+      BSON_APPEND_UTF8(up_child,"Manufacturer-Doc",doc);
+
+    BSON_APPEND_DOCUMENT(&up_par, "$set", up_child);
+
     free(full_str);
 
     query =  BCON_NEW("URI", muduri);
-    if (!mongoc_collection_find_and_modify(mudfile_collection, query, NULL, update, NULL, false, true, false, NULL,&error)) {
+    if (!mongoc_collection_find_and_modify(mudfile_collection, query, NULL, &up_par, NULL, false, true, false, NULL,&error)) {
         MUDC_LOG_ERR("mongoc find_and_modify failed: %s", error.message);
         bson_destroy(query);
-        bson_destroy(update);
         return(false);
     }
     bson_destroy(query);
-    bson_destroy(update);
+    bson_destroy(&up_par);
     return(true);
 }
 
@@ -1316,14 +1331,9 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		    goto err;
 	      }
 	      MUDC_LOG_INFO("Processing an %s protocol\n", is_v6? "v6" : "v4");
-	      /* Look for "protocol" (required) */
+	      /* Look for "protocol" filed */
 	      acllist[acl_index].ace[ace_index].matches.protocol =
 		GETINT_JSONOBJ(tmp_json, "protocol");
-	      if (acllist[acl_index].ace[ace_index].matches.protocol == 0) {
-		MUDC_LOG_ERR("Protocol not found in ACE.\n");
-		goto err;
-	      }
-
 	      /* Check for MUD DNS name extensions */
 	      if ((tmp_2_json=cJSON_GetObjectItem(tmp_json,
 				   "ietf-acldns:src-dnsname"))) {
@@ -1844,9 +1854,9 @@ int verify_mud_content(char* smud, int slen, char* omud, int olen,
     }
 
     if (!CMS_verify(cms, NULL, st, omud_bio, out, CMS_BINARY|CMS_DETACHED)) {
-        MUDC_LOG_ERR("Verification Failure\n");
-        ERR_print_errors_fp(stdout);
-        goto err;
+      MUDC_LOG_ERR("Verification Failure\n");
+      ERR_print_errors_fp(stdout);
+      goto err;
     }
 
     MUDC_LOG_INFO("Verification Successful\n");
@@ -2205,6 +2215,8 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
 
     /* Flag=1 (Want ACL policies) */
     /* Flag=2 (Want MASA URI) */
+    /* XXX these should be DEFINEd! */
+
     if (flag == 1 || flag == 2) {
         /*request for json file */
         ctx = (request_context*)calloc(1, sizeof(request_context));
