@@ -3,6 +3,11 @@
 
 # MUD-Manager Version 2.0a1
 
+### N.B.: Stable release right now is 1.0.  This is the development branch.
+### A list of changes can be found down below.
+
+## Introduction
+
 Manufacturer Usage Description (MUD) is a technique whereby constrained end devices (e.g., IoT devices) can signal to the network what sort of access and network functionality they require to properly function. The end device performs this signaling by issuing a URL in LLDP, DHCP, or as part of an X.509 certificate. A MUD Manager is a service sitting in the network that receives the MUD URL, fetches a MUD file containing access requirements provided by a manufacturer, and creates Access Control Lists (ACLs) that can be installed on network equipment to allow that access.
 
 The MUD specification can be found in
