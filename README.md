@@ -1,9 +1,9 @@
 ![alt text](https://github.com/CiscoDevNet/MUD-Manager/blob/master/MUDlogo.jpg)
 
 
-# MUD-Manager Version 2.0a1
+# MUD-Manager Version Master Development Branch
 
-### N.B.: Stable release right now is 1.0.  This is the development branch.
+### N.B.: Stable release right now is 2.0.  This is the development branch.
 ### A list of changes can be found down below.
 
 ## Introduction
