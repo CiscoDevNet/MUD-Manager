@@ -1,294 +1,71 @@
-# Copyright (c) 2017-2018 Cisco and/or its affiliates.
-# All rights reserved.
+#                                               -*- Autoconf -*-
+# Process this file with autoconf to produce a configure script.
 
-AC_INIT([MUD Manager], 0.8.2)
+AC_PREREQ([2.69])
+AC_INIT(MUD-Manager, 2.1dev, mud@cisco.com)
+AM_INIT_AUTOMAKE([foreign subdir-objects])
+AC_OUTPUT(Makefile src/Makefile dbtools/Makefile)
+LT_INIT
+AC_CONFIG_MACRO_DIRS([m4])
+AC_CONFIG_SRCDIR([src/acl.h])
 AC_CONFIG_HEADERS([config.h])
-AC_CONFIG_AUX_DIR(config)
-AM_INIT_AUTOMAKE([foreign -Wall -Werror subdir-objects])
+
+# Checks for programs.
+AC_PROG_CXX
 AC_PROG_CC
-AC_CONFIG_FILES(Makefile)
+AC_PROG_AWK
+AC_PROG_INSTALL
+AC_PROG_LN_S
+AC_PROG_CPP
+AC_PROG_MKDIR_P
 
-#
-# Libcrypto is required
-#
+# Checks for libraries.
 
-AC_ARG_WITH(ssl-dir,
-	[  --with-ssl-dir=PATH     Specify path to OpenSSL installation ],
-	[  if test "x$withval" = "xno" ; then
-    	       echo "OpenSSL is required"; exit 1
-	   else
-		ssldir=$withval
-	   fi
-	]
-)
+AC_CHECK_LIB([cjson], [cJSON_Parse])
 
-saved_LIBS="$LIBS"
-saved_LDFLAGS="$LDFLAGS"
-saved_CPPFLAGS="$CPPFLAGS"
+AC_CHECK_LIB([cjson_utils], [cJSONUtils_MergePatch])
 
-if test "x$ssldir" != "x" ; then
-    # Try to use $ssldir/lib if it exists, otherwise just $ssldir 
-    if test -d "$ssldir/lib" ; then
-        LDFLAGS="-L$ssldir/lib $saved_LDFLAGS"
-    else
-        LDFLAGS="-L$ssldir $saved_LDFLAGS"
-    fi
-    # Try to use $ssldir/include if it exists, otherwise just $ssldir
-    if test -d "$ssldir/include" ; then
-        CPPFLAGS="-I$ssldir/include $saved_CPPFLAGS"
-    else
-        CPPFLAGS="-I$ssldir $saved_CPPFLAGS"
-    fi
-    LIBS="$saved_LIBS -lssl -lcrypto"
-else
-# Search for openssl and crypto libraries in standard paths
-    AC_SEARCH_LIBS([EVP_EncryptInit], [crypto], [], 
-                   [AC_MSG_ERROR([unable to find openssl crypto library])]
-                  )
-    AC_SEARCH_LIBS([SSL_CTX_new], [ssl], [], 
-                   [AC_MSG_ERROR([unable to find openssl ssl library])]
-                  )
-    AC_CHECK_HEADER([openssl/x509v3.h])
-fi
+AC_CHECK_LIB([crypto], [ERR_load_crypto_strings])
 
-#
-# Libcurl is required
-#
+AC_CHECK_LIB([curl], [curl_easy_setopt])
 
-AC_ARG_WITH(libcurl-dir,
-	[  --with-libcurl-dir=PATH     Specify path to libcurl installation ],
-	[  if test "x$withval" = "xno" ; then
-    	       echo "libcurl is required"; exit 1
-	   else
-		curldir=$withval
-	   fi
-	]
-)
+AC_CHECK_LIB([dl], [dlopen])
 
-saved_LIBS="$LIBS"
-saved_LDFLAGS="$LDFLAGS"
-saved_CPPFLAGS="$CPPFLAGS"
+AC_CHECK_LIB([m], [round])
 
-if test "x$curldir" != "x" ; then
-    # Try to use $curldir/lib if it exists, otherwise just $ssldir 
-    if test -d "$curldir/lib" ; then
-        LDFLAGS="-L$curldir/lib $saved_LDFLAGS"
-    else
-        LDFLAGS="-L$curldir $saved_LDFLAGS"
-    fi
-    LIBS="$saved_LIBS -lcurl"
-else
-# Search for openssl and crypto libraries in standard paths
-    AC_SEARCH_LIBS([curl_easy_setopt], [curl], [], 
-                   [AC_MSG_ERROR([unable to find libcurl])]
-                  )
-fi
+AC_CHECK_LIB([pthread], [pthread_create])
 
-#
-# Find mongoc
-#
-AC_ARG_WITH(mongoc,
-	    [  --with-mongoc=PATH     Specify path to MongoDB C Driver library ],
-	[  if test "x$withval" = "xno" ; then
-    	       echo "MongoDB C Driver library is required"; exit 1
-	   else
-		mongoclibdir=$withval
-	   fi
-	]
-)
-saved_LIBS="$LIBS"
-saved_CPPFLAGS="$CPPFLAGS"
-if test "x$mongoclibdir" = "x" ; then
-    # Not given. Check /usr/local
-    mongoclibdir=/usr/local/lib
-fi
-if test ! -d $mongoclibdir ; then
-    echo "MongoDB C Driver library directory $mongoclibdir doesn't exist. Where is it?"
-    exit 1
-fi
-#
-# Look for the library name (e.g., libmongoc-1.0.<stuff>)
-# A temporary hack is to look for libmongoc*.so and hope we get one hit that
-# we can play with.
-#
-if test -f $mongoclibdir/libmongoc*.so ; then
-    libname=`basename $mongoclibdir/libmongoc*.so | sed 's/\.so//'`
-    shortlibname=`echo $libname | sed 's/lib//'`
-#    echo "libname is $libname"
-#    echo "shortlibname is $shortlibname"
-    LIBS="$saved_LIBS -L$mongoclibdir -l$shortlibname"
-fi
-#
-# Now find the header file.
-#
-incname=`dirname $mongoclibdir`/include
-if test -d $incname/$libname; then 
-    CPPFLAGS="$saved_CPPFLAGS -I$incname/$libname"
-else
-    echo "Could not find mongoc include files in $incname/$libname"
-    echo "Where are mongoc include files?"; exit 1
-fi
+AC_CHECK_LIB([ssl], [get_dh2236])
 
-#
-# Find bson
-#
-AC_ARG_WITH(bson,
-	    [  --with-bson=PATH     Specify path to bson library ],
-	[  if test "x$withval" = "xno" ; then
-    	       echo "Bson library is required"; exit 1
-	   else
-		bsonlibdir=$withval
-	   fi
-	]
-)
-saved_LIBS="$LIBS"
-saved_CPPFLAGS="$CPPFLAGS"
-if test "x$bsonlibdir" = "x" ; then
-    # Not given. Check /usr/local
-    bsonlibdir=/usr/local/lib
-fi
-if test ! -d $bsonlibdir ; then
-    echo "Bson library directory $bsonlibdir doesn't exist. Where is it?"
-    exit 1
-fi
-#
-# Look for the library name (e.g., libbson-1.0.<stuff>)
-# A temporary hack is to look for libbson*.so and hope we get one hit that
-# we can play with.
-#
-if test -f $bsonlibdir/libbson*.so ; then
-    libname=`basename $bsonlibdir/libbson*.so | sed 's/\.so//'`
-    shortlibname=`echo $libname | sed 's/lib//'`
-#    echo "libname is $libname"
-#    echo "shortlibname is $shortlibname"
-    LIBS="$saved_LIBS -L$bsonlibdir -l$shortlibname"
-fi
-#
-# Now find the header file.
-#
-incname=`dirname $bsonlibdir`/include
-if test -d $incname/$libname; then 
-    CPPFLAGS="$saved_CPPFLAGS -I$incname/$libname"
-else
-    echo "Could not find bson include files in $incname/$libname"
-    echo "Where are bson include files?"; exit 1
-fi
+PKG_CHECK_MODULES([MONGOC],[libmongoc-1.0],[],[])
 
-#
-# Find cJSON
-#
-AC_ARG_WITH(cjson,
-	    [  --with-cjson=PATH     Specify path to cjson library ],
-	[  if test "x$withval" = "xno" ; then
-    	       echo "cjson library is required"; exit 1
-	   else
-		cjsonlibdir=$withval
-	   fi
-	]
-)
-saved_LIBS="$LIBS"
-saved_CPPFLAGS="$CPPFLAGS"
-if test "x$cjsonlibdir" = "x" ; then
-    # Not given. Check /usr/local
-    cjsonlibdir=/usr/local/lib
-fi
-if test ! -d $cjsonlibdir ; then
-    echo "cjson library directory $cjsonlibdir doesn't exist. Where is it?"
-    exit 1
-fi
-#
-# Look for the library name (e.g., libcjson.<stuff>)
-# A temporary hack is to look for libcjson.so and hope we get one hit that
-# we can play with.
-#
-if test -f $cjsonlibdir/libcjson.so ; then
-    libname=`basename $cjsonlibdir/libcjson.so | sed 's/\.so//'`
-    shortlibname=`echo $libname | sed 's/lib//'`
-#    echo "libname is $libname"
-#    echo "shortlibname is $shortlibname"
-    LIBS="$saved_LIBS -L$cjsonlibdir -l$shortlibname"
-fi
-#
-# Now find the header file.
-#
-incname=`dirname $cjsonlibdir`/include
-if test -d $incname/$shortlibname; then 
-    CPPFLAGS="$saved_CPPFLAGS -I$incname/$shortlibname"
-else
-    echo "Could not find cjson include files in $incname/$shortlibname"
-    echo "Where are cjson include files?"; exit 1
-fi
-
-#
-# Find cjson_utils
-#
-AC_ARG_WITH(cjson_utils,
-	    [  --with-cjson-utils=PATH     Specify path to cjson_utils library ],
-	[  if test "x$withval" = "xno" ; then
-    	       echo "cjson_utils library is required"; exit 1
-	   else
-		cjson_utilslibdir=$withval
-	   fi
-	]
-)
-saved_LIBS="$LIBS"
-saved_CPPFLAGS="$CPPFLAGS"
-if test "x$cjson_utilslibdir" = "x" ; then
-    # Not given. Check /usr/local
-    cjson_utilslibdir=/usr/local/lib
-fi
-if test ! -d $cjson_utilslibdir ; then
-    echo "cjson library directory $cjson_utilslibdir doesn't exist. Where is it?"
-    exit 1
-fi
-#
-# Look for the library name (e.g., libcjson_utils.<stuff>)
-# A temporary hack is to look for libcjson_utils.so and hope we get one hit that
-# we can play with.
-#
-if test -f $cjson_utilslibdir/libcjson_utils.so ; then
-    libname=`basename $cjson_utilslibdir/libcjson_utils.so | sed 's/\.so//'`
-    shortlibname=`echo $libname | sed 's/lib//'`
-#    echo "libname is $libname"
-#    echo "shortlibname is $shortlibname"
-    LIBS="$saved_LIBS -L$cjson_utilslibdir -l$shortlibname"
-fi
+# AC_SEARCH_LIBS(mongoc-1.0,[], [AC_ERROR[Could not find libmongoc-1.0]])
+# AC_SEARCH_LIBS(libbson-1.0,[], [AC_ERROR[Could not find libbson-1.0]])
 
 
-#
-# Find libcurl
-#
-AC_ARG_WITH(libcurl,
-	    [  --with-libcurl=PATH     Specify path to libcurl],
-	[  if test "x$withval" = "xno" ; then
-    	       echo "libcurl library is required"; exit 1
-	   else
-		libcurldir=$withval
-	   fi
-	]
-)
-saved_LIBS="$LIBS"
-saved_CPPFLAGS="$CPPFLAGS"
-if test "x$libcurldir" = "x" ; then
-    # Not given. Check /usr/local
-    libcurldir=/usr/local/lib
-fi
-if test ! -d $libcurldir ; then
-    echo "libcurl directory $libcurldir doesn't exist. Where is it?"
-    exit 1
-fi
-AC_SEARCH_LIBS([dlopen], [dl], [], 
-               [AC_MSG_ERROR([unable to find dl library])]
-              )
-AC_SEARCH_LIBS([cos], [m], [],
-               [AC_MSG_ERROR([unable to find math library])]
-              )
-AC_SEARCH_LIBS([pthread_create], [pthread], [],
-               [AC_MSG_ERROR([unable to find pthread library])]
-              )
+# Checks for header files.
+AC_CHECK_HEADERS([cJSON.h arpa/inet.h fcntl.h inttypes.h limits.h mach/mach.h malloc.h netdb.h netinet/in.h stddef.h stdint.h stdlib.h string.h sys/socket.h sys/time.h unistd.h])
 
-AC_CHECK_HEADER([pthread.h])
+# Checks for typedefs, structures, and compiler characteristics.
+AC_CHECK_HEADER_STDBOOL
+AC_C_INLINE
+AC_TYPE_INT64_T
+AC_TYPE_OFF_T
+AC_TYPE_PID_T
+AC_TYPE_SIZE_T
+AC_TYPE_SSIZE_T
+AC_TYPE_UID_T
+AC_TYPE_UINT16_T
+AC_TYPE_UINT32_T
+AC_TYPE_UINT64_T
+AC_TYPE_UINT8_T
+AC_CHECK_TYPES([ptrdiff_t])
 
-LIBS="$saved_LIBS $LIBS"
+# Checks for library functions.
+AC_FUNC_FORK
+AC_FUNC_FSEEKO
+AC_FUNC_MALLOC
+AC_FUNC_REALLOC
+AC_CHECK_FUNCS([clock_gettime dup2 gettimeofday localtime_r memchr memmove memset rmdir select socket strcasecmp strchr strcspn strdup strerror strndup strrchr strspn strstr strtol strtoul strtoull uname])
 
 AC_OUTPUT

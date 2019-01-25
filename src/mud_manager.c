@@ -211,7 +211,9 @@ static void send_error_for_context(request_context *ctx, int status,
  */
 
 static void add_vlans_to_pool() {
-    bson_t *filter;
+    bson_t *filter,*update, result;
+    bson_error_t error;
+    
     mongoc_cursor_t *cursor=NULL;
     int i=0;
 
@@ -229,20 +231,25 @@ static void add_vlans_to_pool() {
     if (mongoc_cursor_next(cursor, &record)) {
       continue;
     }
-    /* here we found a new one. */
-    bson_destroy(filter);
-    filter = BCON_NEW(
+    /* here we found a new one. upsert it */
+
+    update = BCON_NEW(
 			"VLAN_ID", BCON_INT32(vlan_list[i].vlan),
 			"v4addrmask", BCON_UTF8(vlan_list[i].v4_nw),
 			"v6addrmask", BCON_UTF8(vlan_list[i].v6_nw),
 			"Authority",BCON_UTF8("none"));
       
-    mongoc_collection_insert_one(vlan_collection, filter, NULL, NULL, NULL);
+    if (!mongoc_collection_find_and_modify(vlan_collection, filter, NULL, update,
+                                 NULL, false, true, false, &result,&error)) {
+      MUDC_LOG_ERR("Update: %s", error.message);
+    }
     bson_destroy(filter);
   }
+  
   if ( cursor != NULL) 
     mongoc_cursor_destroy (cursor);
 }
+
 
 /* find a vlan from a pool.  If already assigned, great.  If not, pick
  * an available VLAN.  Otherwise return -1.
