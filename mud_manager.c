@@ -103,6 +103,7 @@ typedef struct _request_context {
     int orig_mud_len;
     int masaurirequest;
     bool send_client_response;
+    bool needs_mycontroller;
 } request_context;
 
 typedef struct _manufacturer_list {
@@ -895,6 +896,9 @@ static bool update_mudfile_database(request_context *ctx, cJSON* full_json,
       BSON_APPEND_UTF8(up_child,"Manufacturer-Model",model);
     if (doc != NULL)
       BSON_APPEND_UTF8(up_child,"Manufacturer-Doc",doc);
+    if ( ctx->needs_mycontroller ) {
+      BSON_APPEND_UTF8(up_child,"Needs-my-controller","yes");
+    }
 
     BSON_APPEND_DOCUMENT(&up_par, "$set", up_child);
 
@@ -1434,8 +1438,12 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		      } else
 			ignore_ace++;
                     }
-		    if (ignore_ace)
+		    if (ignore_ace) { /* hint in the database that we need
+				       * my controller.
+				       */
+		      ctx->needs_mycontroller=true;
 		      MUDC_LOG_INFO("my-controller is requested for %s, but not listed in config.  Ignoring this ACE",manuf_list[manuf_index].authority);
+		    }
 		}
 
                if (!ignore_ace && (ctrl_json=cJSON_GetObjectItem(tmp_json, "manufacturer"))) {
