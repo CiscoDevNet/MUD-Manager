@@ -37,6 +37,18 @@ AC_CHECK_LIB([pthread], [pthread_create])
 
 AC_CHECK_LIB([ssl], [get_dh2236])
 
+
+if test "x$prefix" = "xNONE"; then
+   prefix="/usr/local"
+fi
+
+if test "x$PKG_CONFIG_PATH" = x
+then
+   export PKG_CONFIG_PATH="$prefix/lib/pkgconfig"
+else
+   export PKG_CONFIG_PATH="$prefix/lib/pkgconfig:$PKG_CONFIG_PATH"
+fi
+
 PKG_CHECK_MODULES([MONGOC],[libmongoc-1.0],[],[])
 
 # AC_SEARCH_LIBS(mongoc-1.0,[], [AC_ERROR[Could not find libmongoc-1.0]])
