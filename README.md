@@ -28,7 +28,9 @@ OpenSSL is used for cryptographic services, and is available on most Linux syste
 
 If a Linux distribution has openssl, but you cannot link to it try:
 
-    sudo apt-get install -y libssl-dev
+    sudo apt-get install -y libssl-dev # debian
+    or
+    yum install openssl-devel # centos
 
 ### cJSON
 cJSON is used for JSON processing in "C". Download it from (https://github.com/DaveGamble/cJSON)
@@ -41,9 +43,9 @@ cJSON is used for JSON processing in "C". Download it from (https://github.com/D
 ### MongoDB
 MongoDB is used to store the MUD URLs, policy derived from the MUD URLs, and MAC addresses that are associated with a MUD URL.
 
-Most likely MongoDB can be installed using a package tool such as apt-get:
+Instructions for installing MongoDB with a package manager can be found at:
 
-        sudo apt-get install -y mongodb
+        https://docs.mongodb.com/manual/administration/install-on-linux/
 
 
 Alternatively it can be downloaded with git, and the follow the instructions in its README.
@@ -52,10 +54,13 @@ Alternatively it can be downloaded with git, and the follow the instructions in 
 
 The MongoDB service should be started automatically when the system boots. If you see an indication that the MUD Manager cannot reach the MongoDB server, you can try
 
-        sudo service mongodb start
+        sudo service mongodb start # (Recent Debian/Ubuntu releases)
+        sudo /etc/init.d/mongod start # Amazon/CentOS
 
 ### Mongo C driver
-The Mongo C driver is needed for the MUD manager to communicate with MongoDB. Download from https://github.com/mongodb/mongo-c-driver/releases. We suggest using version 1.7.0
+The Mongo C driver is needed for the MUD manager to communicate with MongoDB. Download from https://github.com/mongodb/mongo-c-driver/releases. We suggest version 1.7.0 or later, but in any case a version that supports PKG-CONFIG (this excludes the Debian package manager).
+
+To retrieve 1.7.0:
 
     wget https://github.com/mongodb/mongo-c-driver/releases/download/1.7.0/mongo-c-driver-1.7.0.tar.gz
 
@@ -64,11 +69,15 @@ Untar, cd into the mongo-c-driver-1.7.0 directory, and build it.
     ./configure --disable-automatic-init-and-cleanup --with-libbson=bundled
     make
     sudo make install
+    
+
 
 ### libcurl
 Libcurl is used to fetch MUD files from a MUD file server.
 
-    sudo apt-get install libcurl4-openssl-dev
+    sudo apt-get install libcurl4-openssl-dev # Debian/Ubuntu
+    or
+    sudo yum install libcurl-devel # CentOS/Amazon
  
 
 ## Building the MUD Manager
