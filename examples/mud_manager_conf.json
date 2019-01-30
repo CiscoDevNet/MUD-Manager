@@ -17,6 +17,7 @@
 	],
 	"Manufacturers" : [ 
 		{ "authority" : "luminaire.example.com",
+		  "url" : "https://luminaire.example.com/Luminaire_150.json",
                   "cert": "/home/mudtester/luminaire-cacert.pem",
 		  "my_controller_v4" : "10.1.1.4",
 		  "local_networks_v4" : "10.0.0.0 0.0.0.255"

@@ -20,6 +20,12 @@ All request response are in JSON format.
 
 
 3. /getmasauri:
-    Paramters:  MUD_URI contains URI for the MUD File
+    Parameters:  MUD_URI contains URI for the MUD File
 
     Response:  MASA_URI for the corresponding device.
+
+4. /cfg_change
+
+    Parameters: a JSON array: { "Update_URLs" : [ "URL1", "URL2"[,...]]
+
+    Response: 200 or an error.
