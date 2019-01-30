@@ -1,0 +1,29 @@
+N.B. this file is subject to (rapid) change:
+
+There are three key collections:
+
+mudfiles: contains the MUD files themselves and most of the parsed
+	  fields in the top mud container, and the expiry of those
+	  entries.  Also contains the controller mappings.
+	  Primary key: URI
+
+policies: contains policies directly tied to MUD URLs.  Primary key
+	  is the URI.  This collection also contains the VLAN_ID to
+	  be used with a policy.  That's a bug.  It should be
+	  normalized to the _id of a document in the vlans collection.
+
+vlans:	  contains available and assigned VLANs.	  
+	  The model is implemented is as follows:
+	  
+	  VLAN_ID: the VLAN #
+
+	  v4addrmask: a permitted ACE match for this VLAN
+	  v6addrmask: as above for v6.
+	  Owners: an array of either authorities or URLs.
+	          If Owners has no elements, it is available
+		  for assignment.
+
+Note that vlans can be populated from the config file with new
+free entries.
+
+	  

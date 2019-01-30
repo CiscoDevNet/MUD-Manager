@@ -2,50 +2,7 @@
  * Copyright (c) 2017-2018 Cisco and/or its affiliates.
  * All rights reserved.
  */
-
-#include <signal.h>
-#include <civetweb.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <netdb.h>
-#include <openssl/x509v3.h>
-#include <openssl/err.h>
-#include <openssl/asn1.h>
-#include <openssl/cms.h>
-#include <openssl/pem.h>
-#include <openssl/pkcs7.h>
-#include <openssl/ssl.h>
-#include "openssl/dh.h"
-#include "openssl/ec.h"
-#include "openssl/evp.h"
-#include "openssl/ecdsa.h"
-
-#pragma GCC diagnostic push // suppress specific warning from 3rd-party code
-#pragma GCC diagnostic ignored "-Wexpansion-to-defined"
-#include <mongoc.h>
-#pragma GCC diagnostic pop
-#include <cJSON.h>
-#include <curl/curl.h>
-#include "acl.h"
-#include "log.h"
-#include "sessions.h"
-#include "acl_types.h"
-#include "mud_fs_client.h"
-
-#define DACL_INGRESS_EGRESS 0
-#define DACL_INGRESS_ONLY 1
-#define MAX_BUF 4096
-#define MAX_ACL_STATEMENTS 50
-#define INITIAL_ACE_STATEMENTS 50
-#define MAX_ACE_STATEMENTS 300
-
-#define FROM_DEVICE 0
-#define TO_DEVICE 1
-
-#define SRCPORT 1
-#define DSTPORT 2
-
-#define MAXREQURI 255
+#include "mud_manager.h"
 
 static const char *s_http_port = "8000";
 static const char *s_https_port = "8443s";
@@ -78,49 +35,6 @@ static mongoc_collection_t *vlan_collection=NULL;
 mongoc_collection_t *policies_collection=NULL;
 const char *acl_list_prefix = NULL;
 
-typedef struct _vlan_info {
-  int vlan;
-  char *mud_url;
-  char *v4_nw;
-  char *v6_nw;
-} vlan_info;
-
-typedef struct _addrlist {
-  char *address;
-  struct _addrlist *next;
-} addrlist;
-
-typedef struct _request_context {
-    struct mg_connection *in;
-    char *uri;
-    char *mac_addr;
-    char *sess_id;
-    char *nas;
-    char *signed_mud;
-    int signed_mud_len;
-    char *orig_mud;
-    int orig_mud_len;
-    int masaurirequest;
-    bool send_client_response;
-    bool needs_mycontroller;
-} request_context;
-
-typedef struct _manufacturer_list {
-    char* authority;
-    char* uri;
-    char* https_port;
-    char* certfile;
-    char* web_certfile;
-    X509 *cert;
-    X509 *web_cert;
-    int vlan;
-    char* vlan_nw_v4;
-    char* vlan_nw_v6;
-    char* my_ctrl_v4;
-    char* my_ctrl_v6;
-    char* local_nw_v4;
-    char* local_nw_v6;
-} manufacturer_list;
 
 // used externally
 cJSON *defacl_json=NULL;
@@ -236,7 +150,7 @@ static void add_vlans_to_pool() {
 			"VLAN_ID", BCON_INT32(vlan_list[i].vlan),
 			"v4addrmask", BCON_UTF8(vlan_list[i].v4_nw),
 			"v6addrmask", BCON_UTF8(vlan_list[i].v6_nw),
-			"Authority",BCON_UTF8("none"));
+			"Owner","[","]");
 
     if (!mongoc_collection_find_and_modify(vlan_collection, filter, NULL, update,
                                  NULL, false, true, false, &result,&error)) {
@@ -250,25 +164,34 @@ static void add_vlans_to_pool() {
 }
 
 
-/* find a vlan from a pool.  If already assigned, great.  If not, pick
- * an available VLAN.  Otherwise return -1.
+/* The authoritative DB source for VLANs is the vlans collection.
+ * Search it to see if an assignment is available.  Take as a
+ * parameter a parameter a manuf .  This can either be an authority
+ * (same-manufacturer) or a URL (model), as passed by is_url.
+ * Search array for one or the other.
  */
 
-static int find_vlan(manufacturer_list *manuf) {
+static int find_vlan(manufacturer_list *manuf, int is_url) {
   bson_t *filter, *update=NULL, result;
   const bson_t *record;
   mongoc_cursor_t *cursor=NULL;
   bson_error_t error;
-  char *found_str;
+  char *found_str, *search_for;
   cJSON *found_json=NULL,*value_json=NULL;
 
+  if ( is_url )
+    search_for=manuf->uri;
+  else
+    search_for=manuf->authority;
+  
+      
 
-  if ( manuf->authority == NULL ) {
-    MUDC_LOG_ERR("find_vlan called with null authority");
+  if ( search_for == NULL ) {
+    MUDC_LOG_ERR("find_vlan called with null search parameter");
     return -1;
   }
 
-  filter=BCON_NEW("Authority",manuf->authority);
+  filter=BCON_NEW("Owner","{","$in", "[" , BCON_UTF8(search_for),"]", "}");
   cursor = mongoc_collection_find_with_opts(vlan_collection, filter,
 					    NULL, NULL);
   if (mongoc_cursor_next(cursor, &record)) { /* found one */
@@ -293,8 +216,8 @@ static int find_vlan(manufacturer_list *manuf) {
    */
   bson_destroy(filter);
   mongoc_cursor_destroy(cursor);
-  filter=BCON_NEW("Authority","none");
-  update=BCON_NEW("$set","{","Authority",BCON_UTF8(manuf->authority),"}");
+  filter=BCON_NEW("Owner","{","$size", BCON_INT32(0),"}");
+  update=BCON_NEW("$push","{","Owner",BCON_UTF8(search_for),"}");
   if (!mongoc_collection_find_and_modify(vlan_collection, filter, NULL, update,
 				 NULL, false, false, true, &result,&error)) {
     MUDC_LOG_ERR("Update: %s", error.message);
@@ -318,8 +241,6 @@ static int find_vlan(manufacturer_list *manuf) {
   manuf->vlan_nw_v4=GETSTR_JSONOBJ(value_json,"v4addrmask");
   manuf->vlan_nw_v6=GETSTR_JSONOBJ(value_json,"v6addrmask");
 
-  /*  if (found_json != NULL)
-      cJSON_Delete(found_json);*/
   bson_destroy(update);
   bson_destroy(&result);
   bson_destroy(filter);
@@ -1487,7 +1408,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
                     if (manuf_list[manuf_index].vlan == 0 ) {
 		      /* see if we can allocate a VLAN.
 		       */
-		      if ((vlan=find_vlan(&manuf_list[manuf_index])) == -1 ) {
+		      if ((vlan=find_vlan(&manuf_list[manuf_index],IS_AUTHORITY)) == -1 ) {
                    	 MUDC_LOG_INFO("VLAN is required but not configured for this Manufacturer\n");
                          goto err;
 		      }
@@ -2712,6 +2633,8 @@ static int handle_cfg_change(struct mg_connection *nc,
     ctx->uri=cJSON_GetStringValue(Update_URL);
     ctx->send_client_response=false;
 
+    MUDC_LOG_INFO("Beginning processing update of %s",ctx->uri);
+    
     /* we need to get the raw mud file for this */
     filter= BCON_NEW( "URI", BCON_UTF8(ctx->uri) );
     cursor = mongoc_collection_find_with_opts (mudfile_collection, filter,
@@ -2719,9 +2642,10 @@ static int handle_cfg_change(struct mg_connection *nc,
     if (mongoc_cursor_next(cursor, &record)) {
       cJSON *found_json=NULL, *new_policy=NULL;
       char *found_str = bson_as_json(record, NULL);
-      char *newname,*end;
+      char *newname,*end,*my_ctrl_v4;
       char *authority;
-
+      int vlan=0;
+      
       found_json = cJSON_Parse(found_str);
       /* and retrieve MUD file */
       ctx->orig_mud = GETSTR_JSONOBJ(found_json, "MUD_Content");
@@ -2747,8 +2671,23 @@ static int handle_cfg_change(struct mg_connection *nc,
 	MUDC_LOG_ERR("no manufacturer idx yet");
 	return 1;
       }
-      /* try calling parse_mud_content */
+      /* the controller element(s) need to be updated here */
 
+      if ((my_ctrl_v4=GETSTR_JSONOBJ(found_json, "Controller")) != NULL) {
+	  /* if one exists, nuke it. */
+	  if ( manuf_list[mfg_idx].my_ctrl_v4 != NULL ) {
+	    free(manuf_list[mfg_idx].my_ctrl_v4);
+	  }
+	  manuf_list[mfg_idx].my_ctrl_v4=my_ctrl_v4;
+	}
+      
+      /* now check for new vlan information */
+      if ((vlan=find_vlan(&manuf_list[mfg_idx],IS_AUTHORITY)) != -1 )
+	manuf_list[mfg_idx].vlan=vlan;
+
+      /* try calling parse_mud_content */
+      MUDC_LOG_INFO("Parsing and regenerating policy for %s\n",ctx->uri);
+      
       if ((new_policy=parse_mud_content(ctx,mfg_idx)) == NULL) {
 	MUDC_LOG_ERR("parse_mud_content failed");
       }
@@ -2765,6 +2704,8 @@ static int handle_cfg_change(struct mg_connection *nc,
   }
   free(ctx);
   cJSON_Delete(request_json);
+  if (cursor != NULL)
+    mongoc_cursor_destroy(cursor);
   mg_send_http_ok(nc,"text/html",0);
 
   return 200;
