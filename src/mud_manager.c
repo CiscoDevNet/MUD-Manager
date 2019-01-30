@@ -171,7 +171,7 @@ static void add_vlans_to_pool() {
  * Search array for one or the other.
  */
 
-static int find_vlan(manufacturer_list *manuf, int is_url) {
+static int find_vlan(manufacturer_list *manuf, int is_url,int getnew) {
   bson_t *filter, *update=NULL, result;
   const bson_t *record;
   mongoc_cursor_t *cursor=NULL;
@@ -211,9 +211,18 @@ static int find_vlan(manufacturer_list *manuf, int is_url) {
     return manuf->vlan;
   }
 
+  if ( getnew == false ) {	/* don't allocate a new VLAN */
+    manuf->vlan=default_vlan;
+    manuf->vlan_nw_v4=default_localv4;
+    manuf->vlan_nw_v4=default_localv6;
+    return manuf->vlan;
+  }
   /* if we got here, that means no VLANs were found.  Find the first free
    * one and use it.
    */
+  
+      
+    
   bson_destroy(filter);
   mongoc_cursor_destroy(cursor);
   filter=BCON_NEW("Owner","{","$size", BCON_INT32(0),"}");
@@ -973,7 +982,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
     cJSON *aceitem_json=NULL, *action_json=NULL, *matches_json=NULL;
     cJSON *port_json=NULL, *response_json=NULL;
     cJSON *tmp_json=NULL, *tmp_2_json=NULL, *ctrl_json=NULL;
-    int index=0, ace_index=0, acl_index=0, acl_count=0, is_v6=0, vlan=default_vlan;
+    int index=0, ace_index=0, acl_index=0, acl_count=0, is_v6=0, vlan;
     ACL *acllist=NULL;
     int alloced_aces,alloced_acls;
     char *type=NULL;
@@ -989,6 +998,11 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
         return NULL;
     }
 
+    /* Establish a default VLAN, but do not allocate anything */
+    if ( (vlan=find_vlan(&manuf_list[manuf_index],IS_AUTHORITY,false)) == -1) {
+      vlan=default_vlan;
+    }
+    
     full_json = cJSON_Parse((char*)ctx->orig_mud);
     if (!full_json) {
         MUDC_LOG_ERR("JSON file parsing failed: %s", cJSON_GetErrorPtr());
@@ -1405,10 +1419,12 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	       }
 
                 if (cJSON_GetObjectItem(tmp_json, "same-manufacturer")) {
-                    if (manuf_list[manuf_index].vlan == 0 ) {
+		  if (manuf_list[manuf_index].vlan == 0 ||
+		      manuf_list[manuf_index].vlan == default_vlan ) {
+		    
 		      /* see if we can allocate a VLAN.
 		       */
-		      if ((vlan=find_vlan(&manuf_list[manuf_index],IS_AUTHORITY)) == -1 ) {
+		      if ((vlan=find_vlan(&manuf_list[manuf_index],IS_AUTHORITY, true)) == -1 ) {
                    	 MUDC_LOG_INFO("VLAN is required but not configured for this Manufacturer\n");
                          goto err;
 		      }
@@ -2682,7 +2698,7 @@ static int handle_cfg_change(struct mg_connection *nc,
 	}
       
       /* now check for new vlan information */
-      if ((vlan=find_vlan(&manuf_list[mfg_idx],IS_AUTHORITY)) != -1 )
+      if ((vlan=find_vlan(&manuf_list[mfg_idx],IS_AUTHORITY,false)) != -1 )
 	manuf_list[mfg_idx].vlan=vlan;
 
       /* try calling parse_mud_content */
