@@ -119,6 +119,39 @@ static void send_error_for_context(request_context *ctx, int status,
     send_error_result(ctx->in, status, msg);
 }
 
+/* build a netmask out of a prefix.  Only for IPv4.
+ * Inputs: (char *) mask string and int mask #
+ * Returns: true (success) or false (failure)
+ * Side effects: mask string is filled in on succes.
+ */
+
+static bool makemask(char * maskstr,int mask) {
+  if (mask > 32 || mask < 4)  { // silly mask
+    MUDC_LOG_ERR("Silly mask: %d", mask);
+    return false;
+  }
+
+  if ( mask >= 24 ) {
+    sprintf(maskstr,"0.0.0.%d",(1<<(32-mask)) - 1);
+    return true;
+  }
+
+  if ( mask >= 16) {
+    sprintf(maskstr,"0.0.%d.255", (1<<(24-mask)) - 1);
+    return true;
+  }
+
+  if ( mask >= 8 ) {
+    sprintf(maskstr,"0.%d.255.255", (1<<(16-mask)) - 1);
+    return true;
+  }
+
+  sprintf(maskstr,"%d.255.255.255", (1<<(8-mask)) - 1);
+  return true;
+}
+
+
+
 /*
  * This routine checks each VLAN and adds them to a pool.  They may
  * be assigned in this pool.
@@ -683,7 +716,7 @@ cJSON *extract_masa_uri (request_context* ctx, char *mudcontent)
     cJSON *mud_json=NULL, *meta_json=NULL, *response_json=NULL;
     cJSON *tmp_json=NULL;
     char *masa_uri=NULL;
-    int index=0;
+    int indval=0;
     bool found_extension = false;
 
     mud_json = cJSON_Parse(mudcontent);
@@ -708,12 +741,12 @@ cJSON *extract_masa_uri (request_context* ctx, char *mudcontent)
         MUDC_LOG_ERR("No extensions list");
         goto err;
     }
-    for (index=0; index<cJSON_GetArraySize(tmp_json); index++) {
+    for (indval=0; indval<cJSON_GetArraySize(tmp_json); indval++) {
         cJSON *t = NULL;
         char *tmp = NULL;
 
 
-        t = cJSON_GetArrayItem(tmp_json, index);
+        t = cJSON_GetArrayItem(tmp_json, indval);
         tmp = (t != NULL) ? t->valuestring : NULL;
 
         if (tmp == NULL) {
@@ -857,7 +890,7 @@ static int parse_device_policy(cJSON *m_json, char* policy, ACL *acllist, int st
 {
     cJSON *lists_json=NULL, *acllist_json=NULL;
     cJSON *aclitem_json=NULL, *policy_json=NULL;
-    int ret_count=0, index=0;
+    int ret_count=0, indval=0;
 
     if (m_json == NULL || policy == NULL || acllist == NULL) {
         MUDC_LOG_ERR("invalid parameters");
@@ -880,22 +913,22 @@ static int parse_device_policy(cJSON *m_json, char* policy, ACL *acllist, int st
         MUDC_LOG_ERR("JSON file is missing 'access-list' from ietf-mud:device");
 	return 0;
     }
-    for (index=0;index < cJSON_GetArraySize(acllist_json); index++) {
-        aclitem_json = cJSON_GetArrayItem(acllist_json, index);
-	if (index+start_cnt > alloced_acls) {
+    for (indval=0;indval < cJSON_GetArraySize(acllist_json); indval++) {
+        aclitem_json = cJSON_GetArrayItem(acllist_json, indval);
+	if (indval+start_cnt > alloced_acls) {
 	  MUDC_LOG_ERR("WAY too many ACLs.  Number should never exceed 4.");
 	  return 0;
 	}
         if (aclitem_json) {
-            acllist[index+start_cnt].acl_name = GETSTR_JSONOBJ(aclitem_json, "name");
-            if (acllist[index+start_cnt].acl_name == NULL) {
+            acllist[indval+start_cnt].acl_name = GETSTR_JSONOBJ(aclitem_json, "name");
+            if (acllist[indval+start_cnt].acl_name == NULL) {
                 MUDC_LOG_ERR("Missing 'acl name'");
 		return 0;
             }
-            acllist[index+start_cnt].pak_direction = direction;
+            acllist[indval+start_cnt].pak_direction = direction;
         }
     }
-    ret_count = index++;
+    ret_count = indval++;
     return(ret_count);
 }
 
@@ -982,7 +1015,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
     cJSON *aceitem_json=NULL, *action_json=NULL, *matches_json=NULL;
     cJSON *port_json=NULL, *response_json=NULL;
     cJSON *tmp_json=NULL, *tmp_2_json=NULL, *ctrl_json=NULL;
-    int index=0, ace_index=0, acl_index=0, acl_count=0, is_v6=0, vlan;
+    int indval=0, ace_index=0, acl_index=0, acl_count=0, is_v6=0, vlan;
     ACL *acllist=NULL;
     int alloced_aces,alloced_acls;
     char *type=NULL;
@@ -1091,7 +1124,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	  MUDC_LOG_ERR("ACL missing name.");
 	  goto err;
 	}
-	if (strcmp(aclname,acllist[index].acl_name))
+	if (strcmp(aclname,acllist[indval].acl_name))
 	  continue;
 
 	acllist[acl_index].matched=1; /* this signals that we don't have a
@@ -1271,6 +1304,8 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 
 	    if ( tmp_json != NULL ) {
 	      addrlist *r=NULL;
+	      int addrtype = false;
+	      
 	      if ((found_v6 && ! is_v6) || (!found_v6 && is_v6)) {
 		    MUDC_LOG_ERR("Got mixed ipv4/6 ACEs in ACL\n");
 		    goto err;
@@ -1279,8 +1314,95 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 	      /* Look for "protocol" filed */
 	      acllist[acl_index].ace[ace_index].matches.protocol =
 		GETINT_JSONOBJ(tmp_json, "protocol");
-	      /* Check for MUD DNS name extensions */
+
+	      /* IP address entries.  Multicast only for now. */
+
 	      if ((tmp_2_json=cJSON_GetObjectItem(tmp_json,
+				       "destination-ipv4-network")))
+		addrtype=AF_INET;
+	      else {
+		  if ((tmp_2_json=cJSON_GetObjectItem(tmp_json,
+			      "destination-ipv6-network"))) {
+		    addrtype=AF_INET6;
+		  } else {
+		    if ((tmp_2_json=cJSON_GetObjectItem(tmp_json,
+                              "source-ipv6-network"))) {
+		      addrtype=AF_INET6;
+		    } else {
+			if ((tmp_2_json=cJSON_GetObjectItem(tmp_json,
+                              "source-ipv4-network"))) {
+			  addrtype=AF_INET;
+			}
+		    }
+		  }
+	      }
+	      if (addrtype == AF_INET || addrtype == AF_INET6) {
+		char *prefix_str=NULL;
+		char *ipaddr_str=strdup(tmp_2_json->valuestring);
+		struct in6_addr sin6;
+		struct in_addr sin;
+		int prefix,pmax;
+		char mask[30];
+
+		/* search for the "/" and separate. */
+		if ( (prefix_str=index(ipaddr_str,'/')) == NULL) 
+		  {
+		    MUDC_LOG_ERR("Malformed Prefix (no /): %s", ipaddr_str);
+		    free(ipaddr_str);
+		    goto err;
+		  }
+		*(prefix_str++)='\0';
+
+		if ( found_v6 )  {
+		  if ( inet_pton(AF_INET6, ipaddr_str, &sin6) == false ) {
+		    MUDC_LOG_ERR("Malformed IPv6 address: %s", ipaddr_str);
+		    free(ipaddr_str);
+		    goto err;
+		  }
+		  if ( sin6.s6_addr[0] != 0xFF ) { /* not multicast */
+		    MUDC_LOG_ERR("Not processing non-multicast addresses");
+		    free(ipaddr_str);
+		    goto err;
+		  }
+		  pmax=64;
+		} else {
+                  if ( inet_pton(AF_INET, ipaddr_str, &sin) == false ) {
+                    MUDC_LOG_ERR("Malformed IPv4 address: %s", ipaddr_str);
+                    free(ipaddr_str);
+                    goto err;
+		  }
+		  /* do ipv4 multicast check */
+		  if ((htonl(sin.s_addr) & 0xf0000000) != 0xe0000000) {
+                    MUDC_LOG_ERR("Not processing non-multicast addresses");
+                    free(ipaddr_str);
+                    goto err;
+		  }
+		  pmax=32;
+		}
+		  /* check numeric value of prefix */
+		  if ((sscanf(prefix_str,"%d",&prefix) != 1) || (prefix > pmax)) {
+		    MUDC_LOG_ERR("Invalid prefix %s", prefix_str);
+                    free(ipaddr_str);
+		    goto err;
+		  }
+		  /* fill in the blanks in our acl/ace struct, for
+		     IPv4 we need to build a mask. */
+		  if ( found_v6 )  { /* just use the value */
+		    *(--prefix_str)='/';
+		  } else {
+
+		    if ( ! makemask(mask,prefix) )
+		      goto err;	/* makemask already produces an error */
+		    strcat(ipaddr_str," ");
+		    strcat(ipaddr_str,mask);
+		  }
+		  acllist[acl_index].ace[ace_index].matches.addrmask=
+		    ipaddr_str;
+		  no_mud++;
+	      }
+
+	      /* Check for MUD DNS name extensions */
+	      if (  ( ! no_mud) && (tmp_2_json=cJSON_GetObjectItem(tmp_json,
 				   "ietf-acldns:src-dnsname"))) {
 		no_mud++;
 		r=convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
@@ -1289,7 +1411,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 			       tmp_2_json->valuestring);
 		  goto err;
 		}
-	      } else if ((tmp_2_json=cJSON_GetObjectItem(tmp_json,
+	      } else if ((!no_mud) && (tmp_2_json=cJSON_GetObjectItem(tmp_json,
 			    "ietf-acldns:dst-dnsname"))) {
 		no_mud++;
 		r=convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
