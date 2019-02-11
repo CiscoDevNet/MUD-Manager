@@ -10,6 +10,8 @@ mongoose.h
 mud_manager
 mud_test_client
 *.o
+*~
 civetweb/.dirstamp
 civetweb/.deps/
 *.gz
+\#*\#
