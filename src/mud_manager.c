@@ -2780,15 +2780,18 @@ static int handle_cfg_change(struct mg_connection *nc,
     if (mongoc_cursor_next(cursor, &record)) {
       cJSON *found_json=NULL, *new_policy=NULL;
       char *found_str = bson_as_json(record, NULL);
-      char *newname,*end,*my_ctrl_v4;
+      char *newname,*end,*my_ctrl_v4, *m;
       char *authority;
       int vlan=0;
       
       found_json = cJSON_Parse(found_str);
       /* and retrieve MUD file */
-      ctx->orig_mud = GETSTR_JSONOBJ(found_json, "MUD_Content");
-      ctx->orig_mud_len= strlen(ctx->orig_mud);
-
+      m=GETSTR_JSONOBJ(found_json, "MUD_Content");
+      if ( m != NULL) {
+	ctx->orig_mud = strdup(m);
+	ctx->orig_mud_len= strlen(ctx->orig_mud);
+      }
+      
       /* find authority in URL.. skip to 2nd / */
       if ((( newname=index(ctx->uri,'/')) == NULL) || (*(++newname) != '/')) {
 	MUDC_LOG_ERR("This ain\'t no stinking URL: %s",ctx->uri);
@@ -2816,7 +2819,7 @@ static int handle_cfg_change(struct mg_connection *nc,
 	  if ( manuf_list[mfg_idx].my_ctrl_v4 != NULL ) {
 	    free(manuf_list[mfg_idx].my_ctrl_v4);
 	  }
-	  manuf_list[mfg_idx].my_ctrl_v4=my_ctrl_v4;
+	  manuf_list[mfg_idx].my_ctrl_v4=strdup(my_ctrl_v4);
 	}
       
       /* now check for new vlan information */
