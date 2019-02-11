@@ -113,8 +113,10 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
                 ace_ptr+= sprintf(ace_ptr, " tcp");
             } else if (acllist[index].ace[ace_index].matches.protocol == 17) {
                 ace_ptr+= sprintf(ace_ptr, " udp");
-            }
-
+            } else {
+		ace_ptr+= sprintf(ace_ptr," ip");
+	    }
+	    
             if (acllist[index].pak_direction == INGRESS) {
                 ace_ptr += sprintf(ace_ptr, " any");
                 if ((acllist[index].ace[ace_index].matches.src_lower_port != 0)
