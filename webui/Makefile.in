@@ -504,7 +504,10 @@ uninstall-am: uninstall-webDATA
 
 
 @BUILDUI_TRUE@install-data-hook:
-@BUILDUI_TRUE@	( cd $(webdir); @COMPOSER@ require mongodb/mongodb )
+@BUILDUI_TRUE@	@echo You must now run composer in $(webdir) as follows:
+@BUILDUI_TRUE@	@echo @COMPOSER@ require mongodb/mongodb
+@BUILDUI_TRUE@	@echo
+@BUILDUI_TRUE@	@echo This may not be done as root.
 
 # Tell versions [3.59,3.63) of GNU make to not export all variables.
 # Otherwise a system limit (for SysV at least) may be exceeded.
