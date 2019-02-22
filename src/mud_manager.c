@@ -244,11 +244,11 @@ static int find_vlan(manufacturer_list *manuf, int is_url,int getnew) {
     return manuf->vlan;
   }
 
+  bson_destroy(filter);
+  mongoc_cursor_destroy(cursor);
+
   if ( getnew == false ) {	/* don't allocate a new VLAN */
-    manuf->vlan=default_vlan;
-    manuf->vlan_nw_v4=default_localv4;
-    manuf->vlan_nw_v4=default_localv6;
-    return manuf->vlan;
+    return false;
   }
   /* if we got here, that means no VLANs were found.  Find the first free
    * one and use it.
@@ -256,8 +256,6 @@ static int find_vlan(manufacturer_list *manuf, int is_url,int getnew) {
   
       
     
-  bson_destroy(filter);
-  mongoc_cursor_destroy(cursor);
   filter=BCON_NEW("Owner","{","$size", BCON_INT32(0),"}");
   update=BCON_NEW("$push","{","Owner",BCON_UTF8(search_for),"}");
   if (!mongoc_collection_find_and_modify(vlan_collection, filter, NULL, update,
@@ -435,7 +433,7 @@ static int read_mudmgr_config (char* filename)
 		manuf_list[i].vlan = GETINT_JSONOBJ(tmp_json, "vlan");
 		manuf_list[i].vlan_nw_v4 = GETSTR_JSONOBJ(tmp_json, "vlan_nw_v4");
 		manuf_list[i].vlan_nw_v6 = GETSTR_JSONOBJ(tmp_json, "vlan_nw_v4");
-		manuf_list[i].uri= GETSTR_JSONOBJ(tmp_json, "MUD-URL");
+		manuf_list[i].uri= GETSTR_JSONOBJ(tmp_json, "mud-url");
 		manuf_list[i].authority= GETSTR_JSONOBJ(tmp_json, "authority");
 		manuf_list[i].https_port = GETSTR_JSONOBJ(tmp_json, "https_port");
 		manuf_list[i].my_ctrl_v4 = GETSTR_JSONOBJ(tmp_json, "my_controller_v4");
@@ -1008,14 +1006,14 @@ static bool parse_mud_port(cJSON *port_json, ACE *ace, int direction)
     return(true);
 }
 
-cJSON* parse_mud_content (request_context* ctx, int manuf_index)
+cJSON* parse_mud_content (request_context* ctx, int manuf_index, int newdev)
 {
     cJSON *full_json=NULL, *mud_json=NULL, *lists_json=NULL;
     cJSON *acllist_json=NULL, *aclitem_json=NULL, *ace_json=NULL;
     cJSON *aceitem_json=NULL, *action_json=NULL, *matches_json=NULL;
     cJSON *port_json=NULL, *response_json=NULL;
     cJSON *tmp_json=NULL, *tmp_2_json=NULL, *ctrl_json=NULL;
-    int indval=0, ace_index=0, acl_index=0, acl_count=0, is_v6=0, vlan;
+    int indval=0, ace_index=0, acl_index=0, acl_count=0, is_v6=0, vlan=0;
     ACL *acllist=NULL;
     int alloced_aces,alloced_acls;
     char *type=NULL;
@@ -1031,11 +1029,21 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
         return NULL;
     }
 
-    /* Establish a default VLAN, but do not allocate anything */
-    if ( (vlan=find_vlan(&manuf_list[manuf_index],IS_AUTHORITY,false)) == -1) {
-      vlan=default_vlan;
+    /* Establish the device's VLAN.  On first time connect, prefer authority.
+     * Otherwise, prefer URI.
+     */
+
+    if ( newdev == true ) {
+	
+      if ((vlan=find_vlan(&manuf_list[manuf_index],IS_AUTHORITY,false)) == false)
+	if ( (vlan=find_vlan(&manuf_list[manuf_index],IS_URL,false)) == false)
+	  vlan=default_vlan;
+    } else {
+      vlan=manuf_list[manuf_index].vlan;
     }
     
+	
+	
     full_json = cJSON_Parse((char*)ctx->orig_mud);
     if (!full_json) {
         MUDC_LOG_ERR("JSON file parsing failed: %s", cJSON_GetErrorPtr());
@@ -1112,6 +1120,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
     for (acl_index=0;acl_index< acl_count; acl_index++) {
       int k;
       char *aclname;
+      int is_mfgr=0;
 
       for (k=0;k < cJSON_GetArraySize(acllist_json); k++) {
         aclitem_json = cJSON_GetArrayItem(acllist_json, k);
@@ -1465,25 +1474,38 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
                      MUDC_LOG_INFO("local-network  is V4 <%d>\n", is_v6);
                      if (is_v6) {
 		       if (manuf_list[manuf_index].local_nw_v6 == NULL) {
-			 if (default_localv6 == NULL) {
-			   MUDC_LOG_ERR("local-networks used with no available definition");
-			   goto err;
-			 } else
-			   acllist[acl_index].ace[ace_index].matches.addrmask=default_localv6;
-		       } else
-                         acllist[acl_index].ace[ace_index].matches.addrmask =
-			   manuf_list[manuf_index].local_nw_v6;
-                     } else {
+			   
+			 if (default_localv6 == NULL) {// no general default
+			   if ( manuf_list[manuf_index].vlan_nw_v6 != NULL)
+			     acllist[acl_index].ace[ace_index].matches.addrmask=
+			       manuf_list[manuf_index].vlan_nw_v6;
+			   else { // no local network information
+			     MUDC_LOG_ERR("local-networks used with no available definition");
+			     ignore_ace++;
+			   }
+			 } else  // we have a default.  Use it.
+			   acllist[acl_index].ace[ace_index].matches.addrmask=
+			     default_localv6;
+		       } else // we have a specific value for this nw
+			   acllist[acl_index].ace[ace_index].matches.addrmask =
+			     manuf_list[manuf_index].local_nw_v6;
+		     } else {
 		       if (manuf_list[manuf_index].local_nw_v4 == NULL) {
 			 if (default_localv4 == NULL) {
-			   MUDC_LOG_ERR("local-networks used with no available definition");
-			   goto err;
+			   if ( manuf_list[manuf_index].vlan_nw_v4 != NULL)
+			     acllist[acl_index].ace[ace_index].matches.addrmask=
+			     manuf_list[manuf_index].vlan_nw_v4;
+			   else {
+			     MUDC_LOG_ERR("local-networks used with no available definition");
+			     ignore_ace++;
+			   }
 			 } else
-			   acllist[acl_index].ace[ace_index].matches.addrmask=default_localv4;
+			   acllist[acl_index].ace[ace_index].matches.addrmask=
+			     default_localv4;
 		       } else
-                         acllist[acl_index].ace[ace_index].matches.addrmask =
-			   manuf_list[manuf_index].local_nw_v4;
-                     }
+			   acllist[acl_index].ace[ace_index].matches.addrmask =
+			     manuf_list[manuf_index].local_nw_v4;
+		     }
                 }
 		
 		if ((ctrl_json=cJSON_GetObjectItem(tmp_json, "my-controller"))) {
@@ -1508,44 +1530,19 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		      MUDC_LOG_INFO("my-controller is requested for %s, but not listed in config.  Ignoring this ACE",manuf_list[manuf_index].authority);
 		    }
 		}
-
-               if (!ignore_ace && (ctrl_json=cJSON_GetObjectItem(tmp_json, "manufacturer"))) {
-		 char *mfgr=ctrl_json->valuestring;
-		 int i;
-		 /* we need to loop through manuf_list, figure out the VLAN
-		  * go through the VLAN list, and then add the ACL.  If it
-		  * is not in VLAN list, report that but move on.
-		  */
-
-		 for (i=0;i<MAX_MANUF; i++) {
-		   if ( (manuf_list[i].authority)) {
-		     if (! strcmp(mfgr,manuf_list[i].authority)) {/* win! */
-		     if (is_v6 && manuf_list[i].vlan_nw_v6)
-		       acllist[acl_index].ace[ace_index].matches.addrmask=
-			 manuf_list[i].vlan_nw_v6;
-		     else if (manuf_list[i].vlan_nw_v4)
-		       acllist[acl_index].ace[ace_index].matches.addrmask=
-			 manuf_list[i].vlan_nw_v4;
-		     else // we have a VLAN but no mask for this IP- ignore
-		       ignore_ace=1;
-		   }
-	         }
-		 }
-
-		 if (! ((acllist[acl_index].ace[ace_index].matches.addrmask)
-			|| (acllist[acl_index].ace[ace_index].matches.addrmask))) {
-		   MUDC_LOG_INFO("Manufacturer %s not found.  Moving on.",
-				 mfgr);
-		   ignore_ace=1;
-		 }
-	       }
-
+		/* do a check for same-manufacturer first because that
+		 * might get us into a particular VLAN.
+		 */
                 if (cJSON_GetObjectItem(tmp_json, "same-manufacturer")) {
 		  if (manuf_list[manuf_index].vlan == 0 ||
 		      manuf_list[manuf_index].vlan == default_vlan ) {
 		    
 		      /* see if we can allocate a VLAN.
 		       */
+		    /* XXX we now have newdev variable.  Maybe we can
+		     * do something smarter with find_vlan?
+		     */
+
 		      if ((vlan=find_vlan(&manuf_list[manuf_index],IS_AUTHORITY, true)) == -1 ) {
                    	 MUDC_LOG_INFO("VLAN is required but not configured for this Manufacturer\n");
                          goto err;
@@ -1575,14 +1572,68 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index)
 		    }
 		    vlan= manuf_list[manuf_index].vlan;
                 }
-	       }
+		if (!ignore_ace) {
+		  ctrl_json=cJSON_GetObjectItem(tmp_json, "manufacturer");
+		  if ( ctrl_json == NULL )  { /* no manufacturer statement */
+		    ctrl_json=cJSON_GetObjectItem(tmp_json, "model");
+		    is_mfgr=0; /* treat as model */
+		  } else
+		    is_mfgr=1; /* treat as manufacturer */
+		}
+		if ( ctrl_json != NULL ) { /* if it's one or the other */
+		 char *mfgr=ctrl_json->valuestring;
+		 int i;
+		 /* we need to loop through manuf_list, figure out the VLAN
+		  * go through the VLAN list, and then add the ACL.  If it
+		  * is not in VLAN list, report that but move on.
+		  */
 
+		 for (i=0;i<MAX_MANUF; i++) {
+		   char *compare;
+		   if ( is_mfgr )
+		     compare=manuf_list[i].authority;
+		   else
+		     compare=manuf_list[i].uri;
+		   if ( (compare)) {
+		     if (! strcmp(mfgr,compare)) {/* win! */
+		       if (is_v6 && manuf_list[i].vlan_nw_v6)
+			 acllist[acl_index].ace[ace_index].matches.addrmask=
+			   manuf_list[i].vlan_nw_v6;
+		       else if (manuf_list[i].vlan_nw_v4)
+			 acllist[acl_index].ace[ace_index].matches.addrmask=
+			   manuf_list[i].vlan_nw_v4;
+		       else // we have a VLAN but no mask for this IP- ignore
+			 ignore_ace=1;
+
+		       /* If we're a new device and we are only in
+			* the default VLAN, then let's go into this other
+			* VLAN.  This will only work once (we can only be
+			* in one VLAN.  This will allow broadcast to work.
+			* It is **overpermissive** because the other MUD
+			* file may not have granted that permission.
+			*/
+
+		       if ( ! ignore_ace && newdev && vlan == default_vlan )
+			 vlan=manuf_list[i].vlan;
+		   }
+		 }
+		}
+		if (! ((acllist[acl_index].ace[ace_index].matches.addrmask)
+		       || (acllist[acl_index].ace[ace_index].matches.addrmask))) {
+		   MUDC_LOG_INFO("Manufacturer %s not found.  Moving on.",
+				 mfgr);
+		   ignore_ace=1;
+		 }
+	       }
+	    }
+	    
 	    /*
 	     * Sanity checks.
 	     */
-            if (!ignore_ace &&(acllist[acl_index].ace[ace_index].matches.dnsname == NULL)
-		&& (acllist[acl_index].ace[ace_index].matches.addrmask == NULL)
-		&& !vlan) {
+            if (!ignore_ace &&
+		(acllist[acl_index].ace[ace_index].matches.dnsname == NULL) &&
+		(acllist[acl_index].ace[ace_index].matches.addrmask == NULL))
+	      {
                  MUDC_LOG_ERR("ACL: %d, ACE: %d\n", acl_index, ace_index);
                  MUDC_LOG_ERR("Missing Host or Controller name \n");
                  goto err;
@@ -1735,23 +1786,27 @@ void add_mfgrs_to_list() {
 
 
 // Return manufacturer index
-int find_manufacturer(char* muduri)
+// input is a string that can be either a URI or a hostname.
+
+int find_manufacturer(char* lookfor)
 {
-    int j=0, ret=-1;
+  int j=0;
 
-    if (muduri == NULL) {
-        MUDC_LOG_ERR("invalid parameters");
-        return -1;
-    }
+  if (lookfor == NULL) {
+    MUDC_LOG_ERR("invalid parameters");
+    return -1;
+  }
 
-    for (j=0; j < num_manu; j++) {
-        if (strstr(muduri, manuf_list[j].authority) != NULL) {
-            MUDC_LOG_INFO("Found Manufacturer index <%d>\n", j);
-            ret = j;
-            break;
-        }
-    }
-    return ret;
+  for (j=0; j < num_manu; j++) {
+    if ( manuf_list[j].uri != NULL &&
+	 (! strcmp(lookfor,manuf_list[j].uri)))
+      return j;
+    if (manuf_list[j].authority != NULL &&
+	strstr(lookfor, manuf_list[j].authority) != NULL)
+      return j;
+  }
+    MUDC_LOG_INFO("find_manufacturer: none found");
+    return -1;
 }
 
 static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, bool query_only, bool *cache_expired) 
@@ -2404,7 +2459,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
       }
       memset(&manuf_list[num_manu],0,sizeof(manufacturer_list));
       manuf_list[num_manu].authority=strndup(newname,end-newname);
-      manuf_list[num_manu].uri=ctx->uri;
+      manuf_list[num_manu].uri=strdup(ctx->uri);
       manuf_idx=num_manu++;
     }
 
@@ -2521,7 +2576,7 @@ void send_mudfs_request(struct mg_connection *nc, const char *base_uri,
             cJSON_Delete(masa_json);
         }
     } else {
-        parsed_json = parse_mud_content(ctx, manuf_idx);
+      parsed_json = parse_mud_content(ctx, manuf_idx, true);
         if (!parsed_json) {
             MUDC_LOG_ERR("Error in parsing MUD file\n");
             send_error_for_context(ctx, 500, NULL);
@@ -2792,22 +2847,28 @@ static int handle_cfg_change(struct mg_connection *nc,
 	ctx->orig_mud_len= strlen(ctx->orig_mud);
       }
       
-      /* find authority in URL.. skip to 2nd / */
-      if ((( newname=index(ctx->uri,'/')) == NULL) || (*(++newname) != '/')) {
-	MUDC_LOG_ERR("This ain\'t no stinking URL: %s",ctx->uri);
-	return 1;
-      }
-      /* skip past that slash and find the end of authority */
-      if ((end=index(++newname,'/'))== NULL) { /* no file? */
-	MUDC_LOG_ERR("This ain\'t no stinking URL: %s",ctx->uri);
-	return 1;
-      }
-      authority=strndup(newname,end-newname);
+      /* find authority OR URL.. skip to 2nd / */
 
-      /* search for manufacturer (should already be there). */
-      MUDC_LOG_INFO("searching for %s",authority);
-      mfg_idx=find_manufacturer(authority);
-      free(authority);
+      mfg_idx=find_manufacturer(ctx->uri);
+      if ( mfg_idx < 0 )
+	{			/* no uri, look for authority */
+	  if ((( newname=index(ctx->uri,'/')) == NULL) || (*(++newname) != '/')) {
+	    MUDC_LOG_ERR("This ain\'t no stinking URL: %s",ctx->uri);
+	    return 1;
+	  }
+	  /* skip past that slash and find the end of authority */
+	  if ((end=index(++newname,'/'))== NULL) { /* no file? */
+	    MUDC_LOG_ERR("This ain\'t no stinking URL: %s",ctx->uri);
+	    return 1;
+	  }
+	  authority=strndup(newname,end-newname);
+
+	  /* search for manufacturer */
+	  MUDC_LOG_INFO("searching for %s",authority);
+	  mfg_idx=find_manufacturer(authority);
+	  free(authority);
+	}
+
       if ( mfg_idx < 0 ) {
 	MUDC_LOG_ERR("no manufacturer idx yet");
 	return 1;
@@ -2823,13 +2884,19 @@ static int handle_cfg_change(struct mg_connection *nc,
 	}
       
       /* now check for new vlan information */
-      if ((vlan=find_vlan(&manuf_list[mfg_idx],IS_AUTHORITY,false)) != -1 )
-	manuf_list[mfg_idx].vlan=vlan;
+      vlan=find_vlan(&manuf_list[mfg_idx],IS_URL,false);
+      if ( vlan == default_vlan )
+	vlan=find_vlan(&manuf_list[mfg_idx],IS_AUTHORITY,false);
+
+      if ( vlan == -1 )
+	return -1;
+
+      manuf_list[mfg_idx].vlan=vlan;
 
       /* try calling parse_mud_content */
       MUDC_LOG_INFO("Parsing and regenerating policy for %s\n",ctx->uri);
       
-      if ((new_policy=parse_mud_content(ctx,mfg_idx)) == NULL) {
+      if ((new_policy=parse_mud_content(ctx,mfg_idx, false)) == NULL) {
 	MUDC_LOG_ERR("parse_mud_content failed");
       }
 
