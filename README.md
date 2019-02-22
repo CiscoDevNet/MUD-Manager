@@ -255,12 +255,13 @@ Prerequisites:
 The configure script will not test for PHP or mongodb, but will test for
 composer.
 
-To install, issue the configure command with --web-ui=/installdirectory
+To install, issue the configure command with --with-webui=/installdirectory
 where the installdirectory is where you want the HTML installed.
 
 
 # What's new for 3.0?
 
+ * Basic UI support. 
  * Multicast support.  MUD files can contain multicast addresses.
  * Source tree reorganized.
  * VLAN support improved
