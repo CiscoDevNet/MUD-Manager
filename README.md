@@ -241,6 +241,24 @@ The output should look something like this:
                 ACE: ip:inacl#40=permit tcp any eq 22 any
                 ACE: ip:inacl#41=deny ip any any
 
+# The Web User Interface
+
+A new web user interface is now available just for testing purposes.
+**Beware** that there is no current authentication mechanism.
+
+Prerequisites:
+
+ * PHP 2.7 or later
+ * The PHP mongodb extension.
+ * composer
+
+The configure script will not test for PHP or mongodb, but will test for
+composer.
+
+To install, issue the configure command with --web-ui=/installdirectory
+where the installdirectory is where you want the HTML installed.
+
+
 # What's new for 3.0?
 
  * Multicast support.  MUD files can contain multicast addresses.
