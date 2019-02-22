@@ -646,6 +646,10 @@ CXXDEPMODE
 ac_ct_CXX
 CXXFLAGS
 CXX
+BUILDUI_FALSE
+BUILDUI_TRUE
+WEBUI
+COMPOSER
 CPP
 LT_SYS_LIBRARY_PATH
 OTOOL64
@@ -775,6 +779,8 @@ enable_dependency_tracking
 with_gnu_ld
 with_sysroot
 enable_libtool_lock
+with_composer
+with_webui
 '
       ac_precious_vars='build_alias
 host_alias
@@ -1447,6 +1453,10 @@ Optional Packages:
   --with-gnu-ld           assume the C compiler uses GNU ld [default=no]
   --with-sysroot[=DIR]    Search for dependent libraries within DIR (or the
                           compiler's sysroot if not specified).
+  --with-composer=location of composer
+                          path to composer.
+  --with-webui=Web Directory
+                          path to the web directory, no default if used.
 
 Some influential environment variables:
   CC          C compiler command
@@ -3167,7 +3177,7 @@ END
   fi
 fi
 
-ac_config_files="$ac_config_files Makefile src/Makefile dbtools/Makefile"
+ac_config_files="$ac_config_files Makefile src/Makefile dbtools/Makefile webui/Makefile"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -3889,6 +3899,7 @@ do
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
     "src/Makefile") CONFIG_FILES="$CONFIG_FILES src/Makefile" ;;
     "dbtools/Makefile") CONFIG_FILES="$CONFIG_FILES dbtools/Makefile" ;;
+    "webui/Makefile") CONFIG_FILES="$CONFIG_FILES webui/Makefile" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5;;
   esac
@@ -13478,6 +13489,88 @@ CC=$lt_save_CC
 ac_config_headers="$ac_config_headers config.h"
 
 
+
+# Check whether --with-composer was given.
+if test "${with_composer+set}" = set; then :
+  withval=$with_composer;
+        if test "$withval" != "yes" ; then
+    	  COMPOSER="$withval"
+    	fi
+
+fi
+
+# Extract the first word of "composer", so it can be a program name with args.
+set dummy composer; ac_word=$2
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+$as_echo_n "checking for $ac_word... " >&6; }
+if ${ac_cv_path_COMPOSER+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  case $COMPOSER in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_COMPOSER="$COMPOSER" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_path_COMPOSER="$as_dir/$ac_word$ac_exec_ext"
+    $as_echo "$as_me:${as_lineno-$LINENO}: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac
+fi
+COMPOSER=$ac_cv_path_COMPOSER
+if test -n "$COMPOSER"; then
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: $COMPOSER" >&5
+$as_echo "$COMPOSER" >&6; }
+else
+  { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+
+
+# Check whether --with-webui was given.
+if test "${with_webui+set}" = set; then :
+  withval=$with_webui;
+	with_webui=true
+        if test "$withval" != "yes" ; then
+    	  WEBUI="$withval"
+    	else
+	  { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+as_fn_error 1 "No webui directory provided
+See \`config.log' for more details" "$LINENO" 5; }
+    	fi
+	if test x$COMPOSER = x; then
+	  { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+as_fn_error $? "composer not found
+See \`config.log' for more details" "$LINENO" 5; }
+	fi
+
+fi
+
+
+ if test x$with_webui = xtrue ; then
+  BUILDUI_TRUE=
+  BUILDUI_FALSE='#'
+else
+  BUILDUI_TRUE='#'
+  BUILDUI_FALSE=
+fi
+
+
 # Checks for programs.
 ac_ext=cpp
 ac_cpp='$CXXCPP $CPPFLAGS'
@@ -18113,6 +18206,7 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
 
+
 # Checks for libraries.
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking for cJSON_Parse in -lcjson" >&5
@@ -19568,6 +19662,10 @@ if test -z "${am__fastdepCC_TRUE}" && test -z "${am__fastdepCC_FALSE}"; then
   as_fn_error $? "conditional \"am__fastdepCC\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
 fi
+if test -z "${BUILDUI_TRUE}" && test -z "${BUILDUI_FALSE}"; then
+  as_fn_error $? "conditional \"BUILDUI\" was never defined.
+Usually this means the macro was only invoked conditionally." "$LINENO" 5
+fi
 if test -z "${am__fastdepCXX_TRUE}" && test -z "${am__fastdepCXX_FALSE}"; then
   as_fn_error $? "conditional \"am__fastdepCXX\" was never defined.
 Usually this means the macro was only invoked conditionally." "$LINENO" 5
@@ -20552,6 +20650,7 @@ do
     "Makefile") CONFIG_FILES="$CONFIG_FILES Makefile" ;;
     "src/Makefile") CONFIG_FILES="$CONFIG_FILES src/Makefile" ;;
     "dbtools/Makefile") CONFIG_FILES="$CONFIG_FILES dbtools/Makefile" ;;
+    "webui/Makefile") CONFIG_FILES="$CONFIG_FILES webui/Makefile" ;;
     "depfiles") CONFIG_COMMANDS="$CONFIG_COMMANDS depfiles" ;;
     "libtool") CONFIG_COMMANDS="$CONFIG_COMMANDS libtool" ;;
     "config.h") CONFIG_HEADERS="$CONFIG_HEADERS config.h" ;;

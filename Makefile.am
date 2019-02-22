@@ -2,6 +2,6 @@
 # All rights reserved.
 
 AUTOMAKE_OPTIONS= foreign
-SUBDIRS= src dbtools
+SUBDIRS= src dbtools webui
 ACLOCAL_AMFLAGS=-I m4
 

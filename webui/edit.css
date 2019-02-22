@@ -1,0 +1,20 @@
+table {
+    border-collapse: collapse;
+    width: 80%;
+    margin-right: 70px;
+    margin-left: 70px;
+    margin-top: 40px;
+}
+
+table, td {
+    border: 1px solid #aaa;
+}
+
+table tr td:first-child { 
+    background-color:#176264;
+    color: white;
+}
+
+body {
+    font-family: "Lucida Sans Unicode", "Lucida Grande", sans-serif;
+}

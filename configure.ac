@@ -4,11 +4,37 @@
 AC_PREREQ([2.69])
 AC_INIT(MUD-Manager, 2.1dev, mud@cisco.com)
 AM_INIT_AUTOMAKE([foreign subdir-objects])
-AC_OUTPUT(Makefile src/Makefile dbtools/Makefile)
+AC_OUTPUT(Makefile src/Makefile dbtools/Makefile webui/Makefile)
 LT_INIT
 AC_CONFIG_MACRO_DIRS([m4])
 AC_CONFIG_SRCDIR([src/acl.h])
 AC_CONFIG_HEADERS([config.h])
+
+AC_ARG_WITH(composer,
+            [AS_HELP_STRING([[--with-composer=location of composer]],
+                            [path to composer.])],
+[
+        if test "$withval" != "yes" ; then
+    	  COMPOSER="$withval"
+    	fi
+])
+AC_PATH_PROG([COMPOSER],composer)
+AC_ARG_WITH(webui,
+            [AS_HELP_STRING([[--with-webui=Web Directory]],
+                            [path to the web directory, no default if used.])],
+[
+	with_webui=true
+        if test "$withval" != "yes" ; then
+    	  WEBUI="$withval"
+    	else
+	  AC_MSG_FAILURE([No webui directory provided],1)
+    	fi
+	if test x$COMPOSER = x; then
+	  AC_MSG_FAILURE([composer not found])
+	fi
+])
+AC_SUBST(WEBUI)
+AM_CONDITIONAL([BUILDUI],[test x$with_webui = xtrue ])
 
 # Checks for programs.
 AC_PROG_CXX
@@ -18,6 +44,7 @@ AC_PROG_INSTALL
 AC_PROG_LN_S
 AC_PROG_CPP
 AC_PROG_MKDIR_P
+
 
 # Checks for libraries.
 
