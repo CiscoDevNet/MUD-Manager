@@ -649,6 +649,7 @@ CXX
 BUILDUI_FALSE
 BUILDUI_TRUE
 WEBUI
+WEBUSER
 COMPOSER
 CPP
 LT_SYS_LIBRARY_PATH
@@ -780,6 +781,7 @@ with_gnu_ld
 with_sysroot
 enable_libtool_lock
 with_composer
+with_webuser
 with_webui
 '
       ac_precious_vars='build_alias
@@ -1455,6 +1457,7 @@ Optional Packages:
                           compiler's sysroot if not specified).
   --with-composer=location of composer
                           path to composer.
+  --with-webuser=userid   userid to install as, required for web install
   --with-webui=Web Directory
                           path to the web directory, no default if used.
 
@@ -13540,6 +13543,24 @@ fi
 
 
 
+
+# Check whether --with-webuser was given.
+if test "${with_webuser+set}" = set; then :
+  withval=$with_webuser;
+        if test x$withval != xyes ; then
+    	  WEBUSER="$withval"
+    	else
+	  { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+as_fn_error 1 "No webuser uid provided provided
+See \`config.log' for more details" "$LINENO" 5; }
+    	fi
+
+fi
+
+
+
+
 # Check whether --with-webui was given.
 if test "${with_webui+set}" = set; then :
   withval=$with_webui;
@@ -13556,6 +13577,12 @@ See \`config.log' for more details" "$LINENO" 5; }
 	  { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
 $as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
 as_fn_error $? "composer not found
+See \`config.log' for more details" "$LINENO" 5; }
+	fi
+	if test x$WEBUSER = x; then
+	   { { $as_echo "$as_me:${as_lineno-$LINENO}: error: in \`$ac_pwd':" >&5
+$as_echo "$as_me: error: in \`$ac_pwd':" >&2;}
+as_fn_error $? "No web user for install
 See \`config.log' for more details" "$LINENO" 5; }
 	fi
 

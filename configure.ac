@@ -19,6 +19,19 @@ AC_ARG_WITH(composer,
     	fi
 ])
 AC_PATH_PROG([COMPOSER],composer)
+
+AC_ARG_WITH(webuser,
+            [AS_HELP_STRING([[--with-webuser=userid]],
+                            [userid to install as, required for web install])],
+[
+        if test x$withval != xyes ; then
+    	  WEBUSER="$withval"
+    	else
+	  AC_MSG_FAILURE([No webuser uid provided provided],1)
+    	fi
+])
+AC_SUBST(WEBUSER)
+
 AC_ARG_WITH(webui,
             [AS_HELP_STRING([[--with-webui=Web Directory]],
                             [path to the web directory, no default if used.])],
@@ -31,6 +44,9 @@ AC_ARG_WITH(webui,
     	fi
 	if test x$COMPOSER = x; then
 	  AC_MSG_FAILURE([composer not found])
+	fi
+	if test x$WEBUSER = x; then
+	   AC_MSG_FAILURE([No web user for install])
 	fi
 ])
 AC_SUBST(WEBUI)
