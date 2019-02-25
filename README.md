@@ -2,9 +2,12 @@
 
 
 
-# MUD-Manager Version 3.0a1 DEVELOPMENT
+# MUD-Manager Version 3.0a1 ALPHA
 
-### This is the Development Branch.  Stable release right now is 2.0.
+### This master branch is ALPHA code.  Stable release right now is 2.0.
+
+N.B. The database schema in this version is incompatible with previous
+versions.
 
 ### A list of changes can be found down below.
 
