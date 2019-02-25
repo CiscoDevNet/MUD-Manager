@@ -1,9 +1,11 @@
 ![alt text](https://github.com/CiscoDevNet/MUD-Manager/blob/master/MUDlogo.jpg)
 
 
-# MUD-Manager Version Master Development Branch
 
-### N.B.: Stable release right now is 2.0.  This is the development branch.
+# MUD-Manager Version 3.0a1 DEVELOPMENT
+
+### This is the Development Branch.  Stable release right now is 2.0.
+
 ### A list of changes can be found down below.
 
 ## Introduction
@@ -11,7 +13,7 @@
 Manufacturer Usage Description (MUD) is a technique whereby constrained end devices (e.g., IoT devices) can signal to the network what sort of access and network functionality they require to properly function. The end device performs this signaling by issuing a URL in LLDP, DHCP, or as part of an X.509 certificate. A MUD Manager is a service sitting in the network that receives the MUD URL, fetches a MUD file containing access requirements provided by a manufacturer, and creates Access Control Lists (ACLs) that can be installed on network equipment to allow that access.
 
 The MUD specification can be found in
-(https://tools.ietf.org/html/draft-ietf-opsawg-mud-25), which has been approved to be an IETF RFC.
+(https://tools.ietf.org/html/draft-ietf-opsawg-mud-25), which has been approved to be an IETF RFC.  This implementation supports all abstractions, except model.  In addition, source and destination IPv4 and IP networks from the ACL model are supported, so long as they are multicast addresses.
 
 After you have installed the MUD Manager, guidance is available at (https://developer.cisco.com/docs/mud/#!mud-developer-guide) if you need help creating a MUD file, and/or preparing a device to emit a URL to a MUD file.
 
@@ -28,7 +30,9 @@ OpenSSL is used for cryptographic services, and is available on most Linux syste
 
 If a Linux distribution has openssl, but you cannot link to it try:
 
-    sudo apt-get install -y libssl-dev
+    sudo apt-get install -y libssl-dev # debian
+    or
+    yum install openssl-devel # centos
 
 ### cJSON
 cJSON is used for JSON processing in "C". Download it from (https://github.com/DaveGamble/cJSON)
@@ -41,9 +45,9 @@ cJSON is used for JSON processing in "C". Download it from (https://github.com/D
 ### MongoDB
 MongoDB is used to store the MUD URLs, policy derived from the MUD URLs, and MAC addresses that are associated with a MUD URL.
 
-Most likely MongoDB can be installed using a package tool such as apt-get:
+Instructions for installing MongoDB with a package manager can be found at:
 
-        sudo apt-get install -y mongodb
+        https://docs.mongodb.com/manual/administration/install-on-linux/
 
 
 Alternatively it can be downloaded with git, and the follow the instructions in its README.
@@ -52,10 +56,13 @@ Alternatively it can be downloaded with git, and the follow the instructions in 
 
 The MongoDB service should be started automatically when the system boots. If you see an indication that the MUD Manager cannot reach the MongoDB server, you can try
 
-        sudo service mongodb start
+        sudo service mongodb start # (Recent Debian/Ubuntu releases)
+        sudo /etc/init.d/mongod start # Amazon/CentOS
 
 ### Mongo C driver
-The Mongo C driver is needed for the MUD manager to communicate with MongoDB. Download from https://github.com/mongodb/mongo-c-driver/releases. We suggest using version 1.7.0
+The Mongo C driver is needed for the MUD manager to communicate with MongoDB. Download from https://github.com/mongodb/mongo-c-driver/releases. We suggest version 1.7.0 or later, but in any case a version that supports PKG-CONFIG (this excludes the Debian package manager).
+
+To retrieve 1.7.0:
 
     wget https://github.com/mongodb/mongo-c-driver/releases/download/1.7.0/mongo-c-driver-1.7.0.tar.gz
 
@@ -64,12 +71,20 @@ Untar, cd into the mongo-c-driver-1.7.0 directory, and build it.
     ./configure --disable-automatic-init-and-cleanup --with-libbson=bundled
     make
     sudo make install
+    
+
 
 ### libcurl
 Libcurl is used to fetch MUD files from a MUD file server.
 
-    sudo apt-get install libcurl4-openssl-dev
+    sudo apt-get install libcurl4-openssl-dev # Debian/Ubuntu
+    or
+    sudo yum install libcurl-devel # CentOS/Amazon
  
+If you retrieve libcurl and build it on your own, you may wish to
+build against OpenSSL rather than GNUTLS, as the latter dramatically
+increases the number of dependencies (this includes such things as
+the GSSAPI and MySQL, which are really unused in this case).
 
 ## Building the MUD Manager
 
@@ -129,6 +144,9 @@ Each array entry consists of the following elements:
    "v4addrmask" : "192.168.1.0 0.0.0.255"
  * v6addrmask: a string in the form of a v6 network and a mask.
  
+**Note Bene** all VLANs listed in configuration or in the database
+  must have previously been configured in all switches using the same
+  AAA server.
 
 ### Manufacturers
 
@@ -222,6 +240,35 @@ The output should look something like this:
                 ACE: ip:inacl#30=permit udp any host 255.255.255.255 range 5683 5683
                 ACE: ip:inacl#40=permit tcp any eq 22 any
                 ACE: ip:inacl#41=deny ip any any
+
+# The Web User Interface
+
+A new web user interface is now available just for testing purposes.
+**Beware** that there is no current authentication mechanism.
+
+Prerequisites:
+
+ * PHP 2.7 or later
+ * The PHP mongodb extension.
+ * composer
+
+The configure script will not test for PHP or mongodb, but will test for
+composer.
+
+To install, issue the configure command with --with-webui=/installdirectory
+where the installdirectory is where you want the HTML installed.
+
+
+# What's new for 3.0?
+
+ * Basic UI support. 
+ * Multicast support.  MUD files can contain multicast addresses.
+ * Source tree reorganized.
+ * VLAN support improved
+ * Support for new RESTful endpoint to update server
+ * Github space correction.
+ 
+
 
 # What's New for 2.0?
 
