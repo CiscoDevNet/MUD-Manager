@@ -2,9 +2,8 @@
 
 
 
-# MUD-Manager Version 3.0a1 DEVELOPMENT
+# MUD-Manager Version 3.0
 
-### This is the Development Branch.  Stable release right now is 2.0.
 
 ### A list of changes can be found down below.
 
