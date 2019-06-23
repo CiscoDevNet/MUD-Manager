@@ -25,7 +25,7 @@ A MUD URL is an "https://..." file, which means that TLS is used to fetch the fi
 The MUD manager depends on the following packages.
 
 ### OpenSSL
-OpenSSL is used for cryptographic services, and is available on most Linux systems. If not, then a recent release will need to be installed. It may be available using a package installer (such as apt-get), else it can be downladed from https://www.openssl.org. 
+OpenSSL is used for cryptographic services, and is available on most Linux systems. If not, then a recent release will need to be installed. It may be available using a package installer (such as apt-get), else it can be downloaded from https://www.openssl.org. 
 
 If a Linux distribution has openssl, but you cannot link to it try:
 
@@ -170,7 +170,7 @@ The port used to contact the file server (e.g., 443).
 
 #### my_controller_v4, my_controller_v6
 
-These are used to define what is the local IP address for a "my-contoller" statement found in a MUD file.  If these are not present, the my-controller statement will be ignored.
+These are used to define what is the local IP address for a "my-controller" statement found in a MUD file.  If these are not present, the my-controller statement will be ignored.
 
 #### local_networks_v4, local_networks_v6
 
@@ -193,11 +193,11 @@ If a MUD file has a DNS name in it, and that name is not resolvable (say because
 
 #### ControllerMapping, ControllerMapping_v6
 
-If a MUD file has a "controller" statement,it needs to be translated to an IP address. Do that here.
+If a MUD file has a "controller" statement, it needs to be translated to an IP address. Do that here.
 
 #### DefaultACL, DefaultACL_v6
 
-A site policy may provide additional restrictions to the devices. These can be defined as access control list statements here. The default policy included in the configuration policy is to block all othe IP and ICMP packets.
+A site policy may provide additional restrictions to the devices. These can be defined as access control list statements here. The default policy included in the configuration policy is to block all other IP and ICMP packets.
 
 ## MongoDB Tools
 
@@ -211,7 +211,7 @@ The examples directory includes an example of a "luminaire", which includes a sa
 
 ## MUD Manager Test Command
 
-A simple test command is included, which initates REST APIs to the MUD Manager and verifies that the MUD Manager can download and process a  MUD file.
+A simple test command is included, which imitates REST APIs to the MUD Manager and verifies that the MUD Manager can download and process a  MUD file.
 
 If the "luminaire" example MUD file server is running, and the MUD manage is started on its default port, then the following test command should retrieve the MUD file and the return the ACLs contained within it.
 
@@ -291,7 +291,7 @@ specification, reading in all the informational elements into the
 MongoDB.  This will become more important later on as we begin to
 offer at least something of a graphical interface to All of This.
 
-## Contributers
+## Contributors
 Rashmikant Shah
 
 [Brian Weis](https://github.com/iggy2028)
