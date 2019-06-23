@@ -52,7 +52,7 @@ AC_CHECK_LIB([cjson], [cJSON_Parse])
 
 AC_CHECK_LIB([cjson_utils], [cJSONUtils_MergePatch])
 
-AC_CHECK_LIB([crypto], [ERR_load_crypto_strings])
+AC_CHECK_LIB([crypto], [X509V3_get_d2i])
 
 AC_CHECK_LIB([curl], [curl_easy_setopt])
 
@@ -62,7 +62,7 @@ AC_CHECK_LIB([m], [round])
 
 AC_CHECK_LIB([pthread], [pthread_create])
 
-AC_CHECK_LIB([ssl], [get_dh2236])
+AC_CHECK_LIB([ssl], [BIO_new_ssl])
 
 
 if test "x$prefix" = "xNONE"; then

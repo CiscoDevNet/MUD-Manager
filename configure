@@ -18301,9 +18301,9 @@ _ACEOF
 fi
 
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for ERR_load_crypto_strings in -lcrypto" >&5
-$as_echo_n "checking for ERR_load_crypto_strings in -lcrypto... " >&6; }
-if ${ac_cv_lib_crypto_ERR_load_crypto_strings+:} false; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for X509V3_get_d2i in -lcrypto" >&5
+$as_echo_n "checking for X509V3_get_d2i in -lcrypto... " >&6; }
+if ${ac_cv_lib_crypto_X509V3_get_d2i+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_check_lib_save_LIBS=$LIBS
@@ -18317,27 +18317,27 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 #ifdef __cplusplus
 extern "C"
 #endif
-char ERR_load_crypto_strings ();
+char X509V3_get_d2i ();
 int
 main ()
 {
-return ERR_load_crypto_strings ();
+return X509V3_get_d2i ();
   ;
   return 0;
 }
 _ACEOF
 if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_crypto_ERR_load_crypto_strings=yes
+  ac_cv_lib_crypto_X509V3_get_d2i=yes
 else
-  ac_cv_lib_crypto_ERR_load_crypto_strings=no
+  ac_cv_lib_crypto_X509V3_get_d2i=no
 fi
 rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
 LIBS=$ac_check_lib_save_LIBS
 fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_crypto_ERR_load_crypto_strings" >&5
-$as_echo "$ac_cv_lib_crypto_ERR_load_crypto_strings" >&6; }
-if test "x$ac_cv_lib_crypto_ERR_load_crypto_strings" = xyes; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_crypto_X509V3_get_d2i" >&5
+$as_echo "$ac_cv_lib_crypto_X509V3_get_d2i" >&6; }
+if test "x$ac_cv_lib_crypto_X509V3_get_d2i" = xyes; then :
   cat >>confdefs.h <<_ACEOF
 #define HAVE_LIBCRYPTO 1
 _ACEOF
@@ -18531,9 +18531,9 @@ _ACEOF
 fi
 
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for get_dh2236 in -lssl" >&5
-$as_echo_n "checking for get_dh2236 in -lssl... " >&6; }
-if ${ac_cv_lib_ssl_get_dh2236+:} false; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for BIO_new_ssl in -lssl" >&5
+$as_echo_n "checking for BIO_new_ssl in -lssl... " >&6; }
+if ${ac_cv_lib_ssl_BIO_new_ssl+:} false; then :
   $as_echo_n "(cached) " >&6
 else
   ac_check_lib_save_LIBS=$LIBS
@@ -18547,27 +18547,27 @@ cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 #ifdef __cplusplus
 extern "C"
 #endif
-char get_dh2236 ();
+char BIO_new_ssl ();
 int
 main ()
 {
-return get_dh2236 ();
+return BIO_new_ssl ();
   ;
   return 0;
 }
 _ACEOF
 if ac_fn_c_try_link "$LINENO"; then :
-  ac_cv_lib_ssl_get_dh2236=yes
+  ac_cv_lib_ssl_BIO_new_ssl=yes
 else
-  ac_cv_lib_ssl_get_dh2236=no
+  ac_cv_lib_ssl_BIO_new_ssl=no
 fi
 rm -f core conftest.err conftest.$ac_objext \
     conftest$ac_exeext conftest.$ac_ext
 LIBS=$ac_check_lib_save_LIBS
 fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ssl_get_dh2236" >&5
-$as_echo "$ac_cv_lib_ssl_get_dh2236" >&6; }
-if test "x$ac_cv_lib_ssl_get_dh2236" = xyes; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_ssl_BIO_new_ssl" >&5
+$as_echo "$ac_cv_lib_ssl_BIO_new_ssl" >&6; }
+if test "x$ac_cv_lib_ssl_BIO_new_ssl" = xyes; then :
   cat >>confdefs.h <<_ACEOF
 #define HAVE_LIBSSL 1
 _ACEOF
