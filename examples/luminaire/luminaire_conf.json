@@ -9,8 +9,9 @@
         "VLANs" : [
            {
 	      "VLAN_ID" : 5,
-	      "v4addrmask": "10.1.2.0 0.0.0.255",
-  	   },
+	      "v4addrmask": "10.1.2.0 0.0.0.255"
+            }
+        ],
 	"Manufacturers" : [ 
 		{ "authority" : "luminaire.example.com",
                   "cert": "/home/mudtester/luminaire-cacert.pem",
