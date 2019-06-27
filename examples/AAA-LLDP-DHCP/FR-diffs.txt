@@ -1,9 +1,10 @@
---- dictionary	2019-06-03 11:56:24.952407850 -0400
-+++ dictionary	2019-06-23 17:58:48.145218793 -0400
+--- dictionary	2019-06-27 16:34:16.713812240 -0400
++++ dictionary	2019-06-27 16:35:35.506429685 -0400
 @@ -47,3 +47,16 @@
  #ATTRIBUTE	My-Local-String		3000	string
  #ATTRIBUTE	My-Local-IPAddr		3001	ipaddr
  #ATTRIBUTE	My-Local-Integer	3002	integer
++
 +
 +ATTRIBUTE	Cisco-MUD-URL		3000	string
 +ATTRIBUTE 	Url-Name		3001	string
@@ -16,9 +17,8 @@
 +ATTRIBUTE 	Url-Sessid		3008	string
 +ATTRIBUTE 	Url-SessidType		3009	string
 +ATTRIBUTE 	TLS-Client-Cert-1.3.6.1.5.5.7.1.25	3010	string
-+
---- mods-available/rest	2019-06-03 11:56:24.816444200 -0400
-+++ mods-available/rest	2019-06-23 18:03:11.879368644 -0400
+--- mods-available/rest	2019-06-27 16:34:16.709812209 -0400
++++ mods-available/rest	2019-06-27 16:45:35.618997675 -0400
 @@ -46,7 +46,7 @@
  	#
  	# If you wish to disable this pre-caching and reachability check,
@@ -28,13 +28,16 @@
  
  	#
  	#  How long before new connection attempts timeout, defaults to 4.0 seconds.
-@@ -157,9 +157,11 @@
+@@ -157,9 +157,14 @@
  	#  5xx    server error  no            fail
  	#  xxx    -             no            invalid
  	authorize {
 -		uri = "${..connect_uri}/user/%{User-Name}/mac/%{Called-Station-ID}?action=authorize"
 -		method = 'get'
 -		tls = ${..tls}
++	#	uri = "${..connect_uri}/user/%{User-Name}/mac/%{Called-Station-ID}?action=authorize"
++	#	method = 'get'
++	#	tls = ${..tls}
 + 		body = 'json'
 + 		uri = "${..connect_uri}/%{Url-Name}"
 + 		data = '{"%{Url-DataType}":"%{Url-Data}"}'
@@ -43,13 +46,16 @@
  	}
  	authenticate {
  		uri = "${..connect_uri}/user/%{User-Name}/mac/%{Called-Station-ID}?action=authenticate"
-@@ -180,14 +182,18 @@
+@@ -180,14 +185,24 @@
                  tls = ${..tls}
          }
  	accounting {
 -		uri = "${..connect_uri}/user/%{User-Name}/sessions/%{Acct-Unique-Session-ID}?action=accounting"
 -		method = 'post'
 -		tls = ${..tls}
++	#	uri = "${..connect_uri}/user/%{User-Name}/sessions/%{Acct-Unique-Session-ID}?action=accounting"
++	#	method = 'post'
++	#	tls = ${..tls}
 +		body = 'json'
 + 		uri = "${..connect_uri}/%{Url-Name}"
 + 		data = '{"%{Url-DataType}":"%{Url-Data}","%{Url-AddDataType}":"%{Url-AddData}","%{Url-NasType}":"%{Url-Nas}","%{Url-SessidType}":"%{Url-Sessid}"}'
@@ -60,6 +66,9 @@
 -		uri = "${..connect_uri}/user/%{User-Name}/mac/%{Called-Station-ID}?action=post-auth"
 -		method = 'post'
 -		tls = ${..tls}
++	#	uri = "${..connect_uri}/user/%{User-Name}/mac/%{Called-Station-ID}?action=post-auth"
++	#	method = 'post'
++	#	tls = ${..tls}
 +                body = 'json'
 +                uri = "${..connect_uri}/%{Url-Name}"
 +                data = {"%{Url-DataType}":"%{Url-Data}"}
@@ -68,34 +77,34 @@
  	}
  	pre-proxy {
  		uri = "${..connect_uri}/user/%{User-Name}/mac/%{Called-Station-ID}?action=pre-proxy"
---- mods-config/perl/example.pl	2019-06-03 11:56:48.158684324 -0400
-+++ mods-config/perl/example.pl	2019-06-23 18:05:10.572360266 -0400
-@@ -149,9 +149,124 @@
- 	# For debugging purposes only
- #	&log_request_attributes;
+--- mods-config/perl/example.pl	2019-06-27 16:34:16.693812083 -0400
++++ mods-config/perl/example.pl	2019-06-27 16:46:47.735536757 -0400
+@@ -110,7 +110,125 @@
  
--	# You can call another subroutine from here
+ 	# Here's where your authorization code comes
+ 	# You can call another function from here:
 -	&test_call;
- 
-+ 	# Cisco-AVPair will be either an ARRAY (actually, a hash) or a
-+ 	# single AV pair that is not an array. FreeRADIUS seems to send 
-+ 	# them differently. So we have to check if there's just one or not 
++	# &test_call;
++
++	# Cisco-AVPair will be either an ARRAY (actually, a hash) or a
++ 	# single AV pair that is not an array. FreeRADIUS seems to send
++ 	# them differently. So we have to check if there's just one or not
 + 	# (as well as checking for none).
-+ 
++
 + 	if (not defined $RAD_REQUEST{'Cisco-AVPair'}) {
 + 		radiusd::radlog(L_DBG, "Cisco-AVPair not present");
 + 		return RLM_MODULE_OK;
 + 	}
-+ 
++
 + 	if (ref($RAD_REQUEST{'Cisco-AVPair'}) eq 'ARRAY') {
-+ 	    # 
-+ 	    # The array is passed within a hash value, and there does not 
++ 	    #
++ 	    # The array is passed within a hash value, and there does not
 + 	    # seem to be a way to get its size! Note that statements such
-+ 	    # as 
++ 	    # as
 + 	    # 	my @values = values %RAD_REQUEST{'Cisco-AVPair'};
 + 	    # NO LONGER WORK as of Perl 5.28.
 + 	    #
-+ 	    # So we loop through the array sequentially, assuming that 
++ 	    # So we loop through the array sequentially, assuming that
 + 	    #   (a) There will be no more than 40 Cisco-AVPair values, and
 + 	    #   (b) the "method=" statement is the last one.
 + 	    #
@@ -106,7 +115,7 @@
 + 			last;
 + 		}
 + 		#
-+ 		# This finds a "vendor specific" LLDP TLV (type 127). It 
++ 		# This finds a "vendor specific" LLDP TLV (type 127). It
 + 		# may be a MUD URL, or may be some other TLV. To make sure
 + 		# it's a MUD URL, first check the IANA OUI and then find the
 + 		# 'http' string.
@@ -115,7 +124,7 @@
 + 		    	my $value = $RAD_REQUEST{'Cisco-AVPair'}[$i];
 + 			if ($value =~ /\000\000\136\001http/) {
 + 				my $loc = index($value, "http");
-+ 				$RAD_STATE{'Cisco-MUD-URL'} =  
++ 				$RAD_STATE{'Cisco-MUD-URL'} =
 + 					substr($value, $loc);
 + 				radiusd::radlog(L_DBG, "Returning MUD URL from LLDP TLV: $RAD_STATE{'Cisco-MUD-URL'}");
 + 				last;
@@ -126,25 +135,25 @@
 + 		# However, there are older uses of Option 161, so if there is
 + 		# no 'http' just skip it.
 + 		#
-+ 		if ( $RAD_REQUEST{'Cisco-AVPair'}[$i] =~ 
++ 		if ( $RAD_REQUEST{'Cisco-AVPair'}[$i] =~
 + 		    		/^dhcp-option=\000\241/ ) {
 + 		    	my $value = $RAD_REQUEST{'Cisco-AVPair'}[$i];
 + 			my $loc = index($value, "http");
 + 			if ( $loc != 0 ) {
-+ 				$RAD_STATE{'Cisco-MUD-URL'} = 
++ 				$RAD_STATE{'Cisco-MUD-URL'} =
 + 					substr($value, $loc);
 + 				radiusd::radlog(L_DBG, "Returning MUD URL from DHCP Option: $RAD_STATE{'Cisco-MUD-URL'}");
 + 				last;
 + 			}
 + 		}
-+ 
++
 + 	    }
 + 	} else {
 + 	    #
 + 	    # There was a single Cisco-AVPair attribute
 + 	    #
 + 	    radiusd::radlog(L_DBG, "C-AV: $RAD_REQUEST{'Cisco-AVPair'}");
-+ 
++
 + 	    #
 + 	    # Check to see if it's a MUD URL in LLDP.
 + 	    #
@@ -167,21 +176,21 @@
 + 		}
 + 	    }
 + 	}
-+ 		
++
 + 	#
 + 	# Return 'User-Name' in the session data, preferably from the
-+ 	# Accounting message. If there is no 'User-Name' in the # accounting 
-+ 	# message, then assume there was no authentication and fill it in from 
++ 	# Accounting message. If there is no 'User-Name' in the # accounting
++ 	# message, then assume there was no authentication and fill it in from
 + 	# the # "Calling-Station-Id" to emulate MAB.
 + 	#
 + 	# NOTE: This value is used instead of the 'User-Name' determined by
-+ 	# FreeRADIUS, which for an accounting message is also likely to be the 
++ 	# FreeRADIUS, which for an accounting message is also likely to be the
 + 	# 'User-Name' from the message.
 + 	#
 + 	if (defined $RAD_REQUEST{'User-Name'}) {
 + 		$RAD_STATE{'User-Name'} = $RAD_REQUEST{'User-Name'};
 + 		radiusd::radlog(L_DBG, "Returning User-Name from 'User-Name': $RAD_STATE{'User-Name'}");
-+ 
++
 + 	} elsif (defined $RAD_REQUEST{'Calling-Station-Id'}) {
 + 	    	#
 + 		# Remove the '-'s and change upper case to lower case.
@@ -193,27 +202,29 @@
 + 	} else {
 + 		radiusd::radlog(L_DBG, "No User-Name returned");
 + 	}
-+ 	    
++
+ 
  	return RLM_MODULE_OK;
  }
- 
---- radiusd.conf	2019-06-03 11:56:25.000395018 -0400
-+++ radiusd.conf	2019-06-23 18:07:05.173327842 -0400
-@@ -389,6 +389,8 @@
+--- radiusd.conf	2019-06-27 16:34:16.713812240 -0400
++++ radiusd.conf	2019-06-27 16:47:48.287988425 -0400
+@@ -389,6 +389,10 @@
  #  of those attacks
  #
  security {
 +
-+	allow_vulnerable_openssl = 'CVE-2016-6304'
++ 	
++ 	allow_vulnerable_openssl = 'CVE-2016-6304'
++
  	#  chroot: directory where the server does "chroot".
  	#
  	#  The chroot is done very early in the process of starting
---- sites-available/default	2019-06-03 11:56:24.448542563 -0400
-+++ sites-available/default	2019-06-23 18:12:59.373526410 -0400
-@@ -290,6 +290,30 @@
- 	#  See policy.d/filter for the definition of the filter_username policy.
+--- sites-available/default	2019-06-27 16:34:16.721812304 -0400
++++ sites-available/default	2019-06-27 16:51:41.761723365 -0400
+@@ -291,6 +291,33 @@
  	#
  	filter_username
+ 
 + 	# The following lines are needed to recognize that the username 
 + 	# provided by the Catalyst switch is the name of a dACL.
 + 	#
@@ -238,10 +249,13 @@
 + 			Auth-Type := Accept
 + 		}	
 + 	}
- 
++ 
++ 
++
  	#
  	#  Some broken equipment sends passwords with embedded zeros.
-@@ -629,6 +653,28 @@
+ 	#  i.e. the debug output will show
+@@ -629,6 +656,29 @@
  	#  If you don't use "radlast", you can delete this line.
  	unix
  
@@ -267,19 +281,14 @@
 + 		rest
 + 	}
 + 
++
  	#
  	#  For Simultaneous-Use tracking.
  	#
-@@ -699,11 +745,14 @@
- 	#  add it here.  e.g. for later CoA-Request with
- 	#  State, and Service-Type = Authorize-Only.
- 	#
--#	if (!&reply:State) {
--#		update reply {
--#			State := "0x%{randstr:16h}"
--#		}
--#	}
-+	
+@@ -705,6 +755,14 @@
+ #		}
+ #	}
+ 
 + 	if (!&reply:State) {
 + 		update reply {
 + 			State := "0x%{randstr:16h}"
@@ -287,20 +296,21 @@
 + 			Message-Authenticator := 0x00
 + 		}
 + 	}
- 
++
  	#
  	#  For EAP-TTLS and PEAP, add the cached attributes to the reply.
-@@ -723,8 +772,48 @@
+ 	#  The "session-state" attributes are automatically cached when
+@@ -723,9 +781,48 @@
  			&User-Name !* ANY
  		}
  	}
 -	update {
 -		&reply: += &session-state:
+-	}
++#	update {
++#		&reply: += &session-state:
++#	}
 +
-+ 	#update {
-+ 	#	&reply: += &session-state:
-+ 	#}
-+ 
 + 	# This allows FreeRADIUS to accept a Cisco proprietary MUD URI RADIUS
 + 	# TLV -- NOT TESTED -- MIGHT PREPEND AN EXTRANEOUS "URI:" To URI VALUE
 + 	if (Cisco-MUD-URL) {
@@ -338,6 +348,140 @@
 + 			&Url-Data := "%{User-Name}"
 + 		}
 + 		rest
- 	}
++  	}
  
  	#  Get an address from the IP Pool.
+ #	main_pool
+--- sites-enabled/default	2019-06-27 16:34:16.721812304 -0400
++++ sites-enabled/default	2019-06-27 16:51:41.761723365 -0400
+@@ -291,6 +291,33 @@
+ 	#
+ 	filter_username
+ 
++ 	# The following lines are needed to recognize that the username 
++ 	# provided by the Catalyst switch is the name of a dACL.
++ 	#
++ 	if (User-Name =~ /^(mud-)/) {
++ 		update control {
++ 			Auth-Type := Accept
++ 		}	
++ 	}
++ 	
++ 	# The following lines allow FreeRADIUS to allow any "User-Name' that
++ 	# looks like a MAC address (i.e., Cisco "MAC Address Bypass (MAB)), 
++ 	# so that we can accept the MUD URL sent in a AAA Accounting message 
++ 	# later.
++ 	if ((User-Name =~ /^([0-9a-f]{12})/)) {
++ 		update {
++ 		 	&Url-Name := "getaclname"
++ 			&Url-DataType := "MAC_ADDR"
++ 			&Url-Data :="%{User-Name}" 
++ 		}
++ 		rest
++ 		update control {
++ 			Auth-Type := Accept
++ 		}	
++ 	}
++ 
++ 
++
+ 	#
+ 	#  Some broken equipment sends passwords with embedded zeros.
+ 	#  i.e. the debug output will show
+@@ -629,6 +656,29 @@
+ 	#  If you don't use "radlast", you can delete this line.
+ 	unix
+ 
++ 	# The perl module checks for a MUD URI as a Cisco-TLV. If there a TLV,
++ 	# it is returned in Cisco-MUD-URL (used for both X.509 certificate and 
++ 	# LLDP use cases), and then the rest module is called to provide the 
++ 	# MUD URI to the MUD controller and retreive ACL names built from the 
++ 	# contents of the MUD file.
++ 	#
++ 	perl
++ 	if (&session-state:Cisco-MUD-URL) {
++ 		update {
++ 			&Url-Name := "getaclname"
++ 			&Url-DataType := "MAC_ADDR"
++ 			&Url-Data :="%{session-state:User-Name}" 
++ 			&Url-AddDataType := "MUD_URI"
++ 			&Url-AddData :="%{session-state:Cisco-MUD-URL}"
++ 			&Url-NasType := "NAS"
++ 			&Url-Nas :="%{NAS-IP-Address}" 
++ 			&Url-SessidType := "SESS_ID"
++ 			&Url-Sessid :="%{Acct-Session-Id}"
++ 		}
++ 		rest
++ 	}
++ 
++
+ 	#
+ 	#  For Simultaneous-Use tracking.
+ 	#
+@@ -705,6 +755,14 @@
+ #		}
+ #	}
+ 
++ 	if (!&reply:State) {
++ 		update reply {
++ 			State := "0x%{randstr:16h}"
++ 			User-Name := "%{User-Name}"
++ 			Message-Authenticator := 0x00
++ 		}
++ 	}
++
+ 	#
+ 	#  For EAP-TTLS and PEAP, add the cached attributes to the reply.
+ 	#  The "session-state" attributes are automatically cached when
+@@ -723,9 +781,48 @@
+ 			&User-Name !* ANY
+ 		}
+ 	}
+-	update {
+-		&reply: += &session-state:
+-	}
++#	update {
++#		&reply: += &session-state:
++#	}
++
++ 	# This allows FreeRADIUS to accept a Cisco proprietary MUD URI RADIUS
++ 	# TLV -- NOT TESTED -- MIGHT PREPEND AN EXTRANEOUS "URI:" To URI VALUE
++ 	if (Cisco-MUD-URL) {
++ 		update {
++ 			&Url-Name := "getaclname"
++ 			&Url-AddDataType := "MUD_URI"
++ 			&Url-AddData :="%{Cisco-MUD-URL}"
++ 			&Url-NasType := "NAS"
++ 			&Url-Nas :="%{NAS-IP-Address}" 
++ 			&Url-SessidType := "SESS_ID"
++ 			&Url-Sessid :="%{Acct-Session-Id}"
++ 		}
++ 		rest
++ 		
++ 	# This allows FreeFADIUS to recognize a MUD URI delivered in an X.509
++ 	# certificate.
++ 	} elsif (TLS-Client-Cert-1.3.6.1.5.5.7.1.25) {
++ 		update {
++ 			&Url-Name := "getaclname"
++ 			&Url-DataType := "MUD_URI"
++ 			&Url-Data :="%{TLS-Client-Cert-1.3.6.1.5.5.7.1.25}"
++ 		}
++ 		rest
++ 		
++ 	# This allows FreeRADIUS to recognize that a Cisco Catalyst switch has 
++ 	# provided a dACL name and is asking for the contents of the dACL. 
++ 	# This configuration uses the "rest" module again to forward the
++ 	# dACL name to the MUD controller, which will return the contents of 
++ 	# the dACL.
++ 	#
++ 	} elsif (User-Name =~ /^(mud-)/) {
++ 		update {
++ 			&Url-Name := "getaclpolicy"
++ 			&Url-DataType := "ACL_NAME"
++ 			&Url-Data := "%{User-Name}"
++ 		}
++ 		rest
++  	}
+ 
+ 	#  Get an address from the IP Pool.
+ #	main_pool
