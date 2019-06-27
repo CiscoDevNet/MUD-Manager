@@ -99,9 +99,9 @@ verify that FreeRADIUS and the MUD Manager are communicating properly.
     ```
     
     The FreeRADIUS log should have lines something like the following:
-    
-        ```bash
-        <date>  Debug: (0) Sent Accounting-Response Id XX from 127.0.0.1:1813 to 127.0.0.1:57752 length 0
-        <date>  Debug: (0)   Cisco-AVPair = "ACS:CiscoSecure-Defined-ACL=mud-21966-v4fr.in"
-        <date>  Debug: (0) Finished request
-        ```
+
+    ```bash
+    <date>  Debug: (0) Sent Accounting-Response Id XX from 127.0.0.1:1813 to 127.0.0.1:57752 length 0
+    <date>  Debug: (0)   Cisco-AVPair = "ACS:CiscoSecure-Defined-ACL=mud-21966-v4fr.in"
+    <date>  Debug: (0) Finished request
+    ```
