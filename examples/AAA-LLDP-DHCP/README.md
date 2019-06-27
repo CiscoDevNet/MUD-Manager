@@ -26,13 +26,13 @@ Perl 5. Earlier versions of Perl may also work but are untested.
     libperl-dev libkqueue-dev libssl-dev
     ```    
 
-2. Download the source. Version 3.0.17 has been tested, but later versions are 
+2. Download the source. Version 3.0.19 has been tested, but later versions are 
 also likely to be fine.
 
     ```bash
-    wget ftp://ftp.freeradius.org/pub/freeradius/freeradius-server-3.0.17.tar.gz
-    tar -xf freeradius-server-3.0.17.tar.gz
-    cd freeradius-server-3.0.17
+    wget ftp://ftp.freeradius.org/pub/freeradius/freeradius-server-3.0.19.tar.gz
+    tar -xf freeradius-server-3.0.19.tar.gz
+    cd freeradius-server-3.0.19
     ```
 
 3. Make and install.
