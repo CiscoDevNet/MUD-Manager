@@ -1,13 +1,102 @@
-# Generating Device Certificates
+# Deploying MUD in a wireless network
+
+## Generating Certificate for the Device 
 
 To generate a test iDevID certificates for an IoT device, you can run the `run
 .sh` file. This file will generate a root certificate, an intermediate  
-certificate as well as a device iDevID certificate. 
+certificate as well as a device iDevID certificate. After generating the 
+iDevIDs, you can check the certificates using the following command: 
+
+```
+openssl x509 -in examples/certs_and_keys/8021ARintermediate/certs/Wt1234.cert.pem -text -noout
+```
+
+The output should look similar to this:
+
+```bash
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 5594583064329663739 (0x4da3f3a7d7c934fb)
+        Signature Algorithm: ecdsa-with-SHA256
+        Issuer: C = US, ST = IN, O = Cisco, OU = Devices, CN = 802.1AR CA
+        Validity
+            Not Before: Jun 28 02:47:08 2019 GMT
+            Not After : Dec 31 23:59:59 9999 GMT
+        Subject: O = HTT Consulting, OU = Devices, serialNumber = Wt1234
+        Subject Public Key Info:
+            Public Key Algorithm: id-ecPublicKey
+                Public-Key: (256 bit)
+                pub:
+                    04:2f:8f:86:b6:09:43:91:20:0e:82:9f:10:46:44:
+                    d0:23:f3:9a:8a:77:ab:ec:96:3f:d3:5d:20:2c:f5:
+                    e7:43:95:06:24:7f:a0:86:a4:6a:2b:f0:64:09:8d:
+                    7a:46:a6:63:53:97:1b:b3:85:a0:af:c6:0f:35:db:
+                    6c:86:da:e8:21
+                ASN1 OID: prime256v1
+                NIST CURVE: P-256
+        X509v3 extensions:
+            X509v3 Basic Constraints: 
+                CA:FALSE
+            X509v3 Authority Key Identifier: 
+                keyid:FF:85:01:B1:25:A1:C6:93:84:05:A4:AB:37:73:42:9B:A5:CD:F2:25
+                DirName:/C=US/ST=IN/L=Indiana University/O=Cisco/OU=Devices/CN=Root CA
+                serial:00
+
+            X509v3 Key Usage: critical
+                Digital Signature, Key Encipherment
+            X509v3 Subject Alternative Name: 
+                othername:<unsupported>
+    Signature Algorithm: ecdsa-with-SHA256
+         30:45:02:21:00:85:08:f8:79:9d:59:bf:44:83:54:37:3d:76:
+         6e:6e:35:37:23:14:88:ed:95:8c:6d:dc:e3:5f:b8:79:9d:17:
+         8a:02:20:34:f1:96:16:8f:da:c8:37:34:cf:7a:77:80:33:d7:
+         d2:95:5c:00:87:68:12:96:02:4a:2b:ae:cc:ab:8c:74:5e
+``` 
+
+
+## Generating Certificate for FreeRadius 
+
+To deploy the MUD, you need to generate a certificate for the FreeRADIUS as 
+well. The generated certificates should then be copied to `raddb/certs` 
+folder. You can do this by running the following file:
+
+```
+cd MUD-Manager/example/certs-and-keys
+./generate-freeradius-cert.sh 
+```
+
+This will generate the files named `server` in the `certs`, `csr` and 
+`private` folders within `MUD-Manager-Vafa/examples/certs_and_keys/8021ARintermediate`. 
+Next you have to copy the server file as well as the CA chain certificate to 
+the FreeRADIUS folder. First make a backup of the `certs` folder in the 
+`raddb` folder: 
+```bash
+sudo cp -r /usr/local/etc/raddb/certs /usr/local/etc/raddb/certs_bak
+```
+Then copy the certificates in the `raddb/certs`: 
+```bash
+cp MUD-Manager-Vafa/examples/certs_and_keys/8021ARintermediate/certs/ca-chain.cert.pem /usr/local/etc/raddb/certs/ca.pem
+cp MUD-Manager-Vafa/examples/certs_and_keys/8021ARintermediate/certs/server.cert.pem /usr/local/etc/raddb/certs/server.pem
+cp MUD-Manager-Vafa/examples/certs_and_keys/8021ARintermediate/private/server.key.pem /usr/local/etc/raddb/certs/server.key
+```
 
 
 
+**Important note:** After copying the `server` files to the `raddb/certs`, 
+you should then modify the file `raddb/mods-available/eap`:
 
-# Deploying MUD in a wireless network
+- Find `private_key_password=` and set the password
+- Set the `private_key_file` file as follows: 
+    ```
+    private_key_file = ${certdir}/server.key
+    ```
+- Set the `certificate_file` file as follows:
+    ```
+    certificate_file = ${certdir}/server.pem
+    ```
+
+                
 
 ## wpa_supplicant configuration
 
