@@ -72,7 +72,7 @@ and use the "secret" configured on the NAS to talk to RADIUS servers.
     }
     ```
 
-6. Start up the MUD Manager (e.g., using the luminaire example).
+7. Start up the MUD Manager (e.g., using the luminaire example).
 
     **NOTE**: If the MUD Manager is not listening on its socket, FreeRADIUS won't 
       start properly.
@@ -84,7 +84,7 @@ watch the messages
     sudo radiusd -Xxx
     ```
 
-8. If you have installed the luminair example,the following script will
+9. If you have installed the luminair example,the following script will
 verify that FreeRADIUS and the MUD Manager are communicating properly.
 
     ```bash

@@ -6,7 +6,7 @@
 
 
 # OpenSSL 8021ARintermediate CA configuration file.
-# Copy to `$dir/8021ARintermediate/openssl-8021ARintermediate.cnf`.
+# Copy to `$dir/openssl-8021ARintermediate.cnf`.
 #
 # Remove the crlDistributionPoints to drop CRL support and
 # authorityInfoAccess to drop OCSP support.
@@ -204,21 +204,21 @@ cname_seq_type=SEQ:cname_seq
 
 [ cname_seq ]
 cname_oid=OID:2.5.4.6
-cname_val=PRINTABLESTRING:"CH"
+cname_val=PRINTABLESTRING:"US"
 
 [ email_section ]
 email_seq_type=SEQ:email_seq
 
 [ email_seq ]
 emailOID=OID:1.2.840.113549.1.9.1
-email_val=IA5:"ascertia@ofcourseimright.com"
+email_val=IA5:"whatever@happens.com"
 
 [ cn_section ]
 cn_seq_type=SEQ:cn_seq
 
 [ cn_seq ]
 cn_oid=OID:2.5.4.3
-cn_val=PRINTABLESTRING:"Eliot Lear"
+cn_val=PRINTABLESTRING:"John Smith"
 
 [ usr_cert ]
 
@@ -249,5 +249,5 @@ basicConstraints=CA:FALSE
 
 # This will be displayed in Netscape's comment listbox.
 # nsComment			= "OpenSSL Generated Certificate"
-1.3.6.1.5.5.7.1.25=ASN1:IA5STRING:https://www.ofcourseimright.com/Luminaire_150.json"
+1.3.6.1.5.5.7.1.25=ASN1:IA5STRING:https://www.ofcourseimright.com/Luminaire_150.json
 1.3.6.1.5.5.7.1.30=ASN1:SEQ:mud_signers
