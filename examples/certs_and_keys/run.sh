@@ -9,6 +9,9 @@ find . -name "*.sh" | xargs chmod +x
 # generating intermediate certificate
 ./generate-ca-8021AR.sh
 
+# generating FreeRADIUS certificate
+./generate-freeradius-cert.sh
+
 # generating iDevID certificate
 ./generate-iDevID-8021AR.sh
 

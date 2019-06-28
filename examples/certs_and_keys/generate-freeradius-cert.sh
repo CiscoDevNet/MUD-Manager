@@ -5,7 +5,8 @@
 # https://datatracker.ietf.org/doc/draft-moskowitz-ecdsa-pki/?include_text=1
 ##############################################################################
 
-# setting the environment for root certificate by sourcing env-intermediate.sh
+# setting the environment for root and intermediate  certificate
+. ./env-root.sh
 . ./env-80211ARintermediate.sh
 
 

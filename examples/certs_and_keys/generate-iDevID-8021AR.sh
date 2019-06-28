@@ -6,6 +6,7 @@
 ##############################################################################
 
 # setting the environment for root certificate by sourcing env-intermediate.sh
+. ./env-root.sh
 . ./env-80211ARintermediate.sh
 
 
