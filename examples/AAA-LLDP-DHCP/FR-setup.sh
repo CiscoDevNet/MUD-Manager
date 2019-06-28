@@ -12,3 +12,7 @@ echo "Adding necessary links"
    (cd mods-enabled; \
     ln -s ../mods-available/rest rest; \
     ln -s ../mods-available/perl perl)
+
+cd ${RADDB};
+find . -name "*.rej" -delete
+
