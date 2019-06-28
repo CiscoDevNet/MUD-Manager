@@ -1,9 +1,15 @@
+#!/bin/bash
 ##############################################################################
 # The content of this file is taken from the "Guide for building an ECC pki"
 # draft available at
 # https://datatracker.ietf.org/doc/draft-moskowitz-ecdsa-pki/?include_text=1
 ##############################################################################
 
+#   Note: this files should be called from "generate-root-ca.sh" otherwise that
+#   script would not run completely and properly
+#
+#
+#
 #   cadir
 #
 #            Directory for Root certificate files
@@ -48,7 +54,7 @@ DN=$countryName$stateOrProvinceName$localityName
 export DN=$DN$organizationName$organizationalUnitName$commonName
 
 echo $DN
-export subjectAltName=email:postmaster@htt-consult.com
+export subjectAltName=email:whatever@happens.com
 
 export default_crl_days=2048
 

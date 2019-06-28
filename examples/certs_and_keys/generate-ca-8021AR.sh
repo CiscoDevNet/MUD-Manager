@@ -1,8 +1,15 @@
+#!/bin/bash
 ##############################################################################
 # The content of this file is taken from the "Guide for building an ECC pki"
 # draft available at
 # https://datatracker.ietf.org/doc/draft-moskowitz-ecdsa-pki/?include_text=1
 ##############################################################################
+
+
+
+# setting the environment for root certificate by sourcing env-intermediate.sh
+. ./env-80211ARintermediate.sh
+
 
 # Create passworded keypair file
 

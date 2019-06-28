@@ -1,10 +1,15 @@
+#!/bin/bash
 ##############################################################################
 # The content of this file is taken from the "Guide for building an ECC pki"
 # draft available at
 # https://datatracker.ietf.org/doc/draft-moskowitz-ecdsa-pki/?include_text=1
 ##############################################################################
 
-
+#   Note: this files should be called from "generate-intermediate-ca.sh"
+#   otherwise  that script would not run completely and properly
+#
+#
+#
 #   dir
 #            Directory for certificate files
 #
@@ -19,6 +24,8 @@
 #   sn
 #            Serial Number length in bytes
 #            For a public CA the range is 8 to 19
+
+export cadir=`pwd`
 
 export dir=$cadir/8021ARintermediate
 mkdir $dir
@@ -48,7 +55,7 @@ organizationName="/O=Cisco"
 organizationalUnitName="/OU=Devices"
 commonName="/CN=802.1AR CA"
 DN=$countryName$stateOrProvinceName$localityName$organizationName
-export DN=$DN$organizationalUnitName$commonName
+DN=$DN$organizationalUnitName$commonName
 echo $DN
-export subjectAltName=email:postmaster@htt-consult.com
+export subjectAltName=email:whatever@happens.com
 echo $subjectAltName

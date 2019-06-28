@@ -1,9 +1,13 @@
+#!/bin/bash
 ##############################################################################
 # The content of this file is taken from the "Guide for building an ECC pki"
 # draft available at
 # https://datatracker.ietf.org/doc/draft-moskowitz-ecdsa-pki/?include_text=1
 ##############################################################################
 
+
+# setting the environment for root certificate by sourcing env-root.sh
+. ./env-root.sh
 
 # Create passworded keypair file
 
@@ -22,16 +26,14 @@ fi
 # 7300 days = 20 years; Intermediate CA is 10 years.
 
 echo GENERATING and SIGNING REQ
-openssl req -config $cfgdir/openssl-root.cnf $passin \
+openssl req -x509 -config $cfgdir/openssl-root.cnf $passin \
      -set_serial 0x$(openssl rand -hex $sn)\
      -keyform $format -outform $format\
      -key $rootca/private/ca.key.$format -subj "$DN"\
-     -new -x509 -days 7300 -sha256 -extensions v3_ca\
+     -new -days 7300 -sha256 -extensions v3_ca\
      -out $cadir/certs/ca.cert.$format
 
 #
 
-openssl x509 -inform $format -in $cadir/certs/ca.cert.$format\
-     -text -noout
-openssl x509 -purpose -inform $format\
-     -in $cadir/certs/ca.cert.$format -inform $format
+openssl x509 -inform $format -in $cadir/certs/ca.cert.$format -text -noout
+openssl x509 -purpose -inform $format -in $cadir/certs/ca.cert.$format -inform $format

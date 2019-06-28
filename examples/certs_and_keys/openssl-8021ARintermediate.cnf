@@ -50,8 +50,7 @@ policy            = policy_loose
 copy_extensions   = copy
 
 [ policy_strict ]
-# The root CA should only sign 8021ARintermediate
-#   certificates that match.
+# The root CA should only sign 8021ARintermediate certificates that match.
 # See the POLICY FORMAT section of `man ca`.
 countryName             = match
 stateOrProvinceName     = match
@@ -60,8 +59,7 @@ organizationalUnitName  = optional
 commonName              = optional
 
 [ policy_loose ]
-# Allow the 8021ARintermediate CA to sign
-#   a more diverse range of certificates.
+# Allow the 8021ARintermediate CA to sign a more diverse range of certificates.
 # See the POLICY FORMAT section of the `ca` man page.
 countryName             = optional
 stateOrProvinceName     = optional
