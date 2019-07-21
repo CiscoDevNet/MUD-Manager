@@ -680,17 +680,12 @@ static bool check_required_fields (request_context* ctx, cJSON *mud_json)
     } else {
 	tmp_strvalue = GETSTR_JSONOBJ(mud_json, "mud-url");
 	if (strcmp(tmp_strvalue,ctx->uri)) {
-	  /* just warn if the difference is ".json" */
-	  char *gotjson = strstr(tmp_strvalue,".json");
-	  if (gotjson == NULL ||
-	      strncmp(tmp_strvalue,ctx->uri,gotjson-tmp_strvalue)) {
+	  /* blow chunks */
 
        	    MUDC_LOG_ERR("MUD URL in MUD file does not match given MUD URL.");
-	    MUDC_LOG_ERR("     URL in MUD file: %s", tmp_strvalue);
-	    MUDC_LOG_ERR("     URL provided:    %s", ctx->uri);
             goto err;
 	  }
-	}
+	
     }
     /*
      * Validate that some mandatory attributes are present that we don't

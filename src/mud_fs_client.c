@@ -162,7 +162,7 @@ char *fetch_file(CURL *curl, char *get_url,
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 1L);
     
     if (!strcmp(response_app_string,"mud+json")) {
-        headers = curl_slist_append(headers, "Accept: application/mud+json");
+      /*        headers = curl_slist_append(headers, "Accept: application/mud+json");*/
     } else if (!strcmp(response_app_string, "pkcs7-signature")) {
         headers = curl_slist_append(headers, 
 				    "Accept: application/pkcs7-signature");
