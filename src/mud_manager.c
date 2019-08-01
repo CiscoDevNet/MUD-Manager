@@ -1193,6 +1193,20 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index, int newdev)
                 goto err;
             }
 
+	    /*
+	     * Check the "actions"
+	     */
+	    /* we need to handle "actions" first because the matches code may
+	     * cause use to duplicate an ACE.
+	     */
+             action_json = cJSON_GetObjectItem(aceitem_json, "actions"); 
+             if (cJSON_GetObjectItem(action_json, "forwarding")) {
+                 if (strcmp(cJSON_GetObjectItem(action_json, 
+			    "forwarding")->valuestring, "accept") == 0) {
+                     acllist[acl_index].ace[ace_index].action = 1;
+                  }
+             }
+
             matches_json = cJSON_GetObjectItem(aceitem_json, "matches");
             if (!matches_json) {
 		MUDC_LOG_ERR("ACE statement is missing 'matches'");
