@@ -1901,7 +1901,7 @@ static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, boo
 	 */
         cJSON_AddItemToObject(response_json, "Cisco-AVPair", dacl_name);
         dacl_name = NULL;  // we don't want to nuke this
-        if (vlan) {
+        if (vlan > 0) {
             cJSON_AddStringToObject(response_json, "Tunnel-Type", "VLAN");
             cJSON_AddStringToObject(response_json, "Tunnel-Medium-Type", 
 		    				   "IEEE-802");
