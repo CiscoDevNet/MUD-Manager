@@ -1420,53 +1420,50 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index, int newdev)
 	      }
 
 	      /* Check for MUD DNS name extensions */
-	      if (  ( ! no_mud) && (tmp_2_json=cJSON_GetObjectItem(tmp_json,
-				   "ietf-acldns:src-dnsname"))) {
-		no_mud++;
-		r=convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
-		if ( r == NULL ) {
-		  MUDC_LOG_ERR("Unable to get IP address of %s",
-			       tmp_2_json->valuestring);
-		  goto err;
-		}
-	      } else if ((!no_mud) && (tmp_2_json=cJSON_GetObjectItem(tmp_json,
-			    "ietf-acldns:dst-dnsname"))) {
-		no_mud++;
-		r=convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
-		if ( r == NULL ) {
-		  MUDC_LOG_ERR("Unable to get IP address of %s",
-			       tmp_2_json->valuestring);
-		  goto err;
-		}
-	      }
-	      while (r != NULL) { /* copy ace entries as necessary
-				   * be sure to not do mud entries.
-				   */
-		acllist[acl_index].ace[ace_index].matches.dnsname =
-		  r->address;
-		if (r->next != NULL) {
-		  /* check space */
-		  ace_index++;
-		  if ( alloced_aces<=ace_index ) {
-		    ACE *tmpace=acllist[acl_index].ace;
-		    if ( make_room(&tmpace,
-				   alloced_aces*sizeof(ACE),
-				   (alloced_aces+10)*sizeof(ACE)) == -1 ) {
-		      MUDC_LOG_ERR("Not enough memory to realloc");
-		      goto err;
+	      if ( ! no_mud ) {
+		  tmp_2_json=cJSON_GetObjectItem(tmp_json,"ietf-acldns:src-dnsname");
+		  if ( tmp_2_json == NULL )
+		    tmp_2_json=cJSON_GetObjectItem(tmp_json,"ietf-acldns:dst-dnsname");
+		  if ( tmp_2_json != NULL ) {
+		      no_mud++;
+		      r=convert_dns_to_ip(tmp_2_json->valuestring, is_v6);
+		      if ( r == NULL ) {
+			MUDC_LOG_ERR("Unable to get IP address of %s",
+				     tmp_2_json->valuestring);
+			goto err;
+		      }
 		    }
-		    alloced_aces+=10;
+		  while (r != NULL) { /* copy ace entries as necessary
+				       * be sure to not do mud entries.
+				       */
+		    acllist[acl_index].ace[ace_index].matches.dnsname =
+		      r->address;
+		    if (r->next != NULL) {
+		      /* check space */
+		      ace_index++;
+		      acllist[acl_index].ace_count++;
+		      if ( alloced_aces<=ace_index ) {
+			ACE *tmpace=acllist[acl_index].ace;
+			if ( make_room(&tmpace,
+				       alloced_aces*sizeof(ACE),
+				       (alloced_aces+10)*sizeof(ACE)) == -1 ) {
+			  MUDC_LOG_ERR("Not enough memory to realloc");
+			  goto err;
+			}
+			alloced_aces+=10;
+		      }
+		      /* now bcopy previous entry to capture
+		       * UDP/TCP properties.
+		       */
+		      bcopy(&(acllist[acl_index].ace[ace_index-1]),
+			    &(acllist[acl_index].ace[ace_index]),
+			    sizeof(ACE));
+		    }
+		    r=r->next;
 		  }
-		  /* now bcopy previous entry to capture
-		   * UDP/TCP properties.
-		   */
-		  bcopy(&(acllist[acl_index].ace[ace_index-1]),
-			&(acllist[acl_index].ace[ace_index]),
-			sizeof(ACE));
 		}
-		r=r->next;
-	      }
 	    }
+
 
 	    /*
 	     * ietf-mud:mud
@@ -1656,16 +1653,6 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index, int newdev)
                  goto err;
              }
 
-	    /*
-	     * Check the "actions"
-	     */
-             action_json = cJSON_GetObjectItem(aceitem_json, "actions"); 
-             if (cJSON_GetObjectItem(action_json, "forwarding")) {
-                 if (strcmp(cJSON_GetObjectItem(action_json, 
-			    "forwarding")->valuestring, "accept") == 0) {
-                     acllist[acl_index].ace[ace_index].action = 1;
-                  }
-             }
              if ( ! ignore_ace ) { /* if not set, we're good */
 	       acllist[acl_index].ace_count++;
 	       ace_index++;
