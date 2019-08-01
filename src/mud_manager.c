@@ -1542,7 +1542,9 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index, int newdev)
 		/* do a check for same-manufacturer first because that
 		 * might get us into a particular VLAN.
 		 */
-                if (cJSON_GetObjectItem(tmp_json, "same-manufacturer")) {
+                if ( ! ignore_ace)  {
+		    
+		  if (cJSON_GetObjectItem(tmp_json, "same-manufacturer")) {
 		  if (manuf_list[manuf_index].vlan == 0 ||
 		      manuf_list[manuf_index].vlan == default_vlan ) {
 		    
@@ -1580,7 +1582,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index, int newdev)
 		      vlan);
 		    }
 		    vlan= manuf_list[manuf_index].vlan;
-                }
+		  }
 		if (!ignore_ace) {
 		  ctrl_json=cJSON_GetObjectItem(tmp_json, "manufacturer");
 		  if ( ctrl_json == NULL )  { /* no manufacturer statement */
@@ -1632,9 +1634,15 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index, int newdev)
 		   MUDC_LOG_INFO("Manufacturer %s not found.  Moving on.",
 				 mfgr);
 		   ignore_ace=1;
-		 }
-	       }
+		}
+		}
+		} /* ignore_ace before same manufacturer/manufacturer */
+		
 	    }
+	    
+
+	    
+	    
 	    
 	    /*
 	     * Sanity checks.
