@@ -1008,7 +1008,7 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index, int newdev)
     cJSON *aceitem_json=NULL, *action_json=NULL, *matches_json=NULL;
     cJSON *port_json=NULL, *response_json=NULL;
     cJSON *tmp_json=NULL, *tmp_2_json=NULL, *ctrl_json=NULL;
-    int indval=0, ace_index=0, acl_index=0, acl_count=0, is_v6=0, vlan=0;
+    int indval=0, acl_index=0, acl_count=0, is_v6=0, vlan=0;
     ACL *acllist=NULL;
     int alloced_aces,alloced_acls;
     char *type=NULL;
@@ -1116,7 +1116,8 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index, int newdev)
       int k;
       char *aclname;
       int is_mfgr=0;
-
+      int ace_index=0;
+      
       for (k=0;k < cJSON_GetArraySize(acllist_json); k++) {
         aclitem_json = cJSON_GetArrayItem(acllist_json, k);
 	/*
@@ -1668,10 +1669,8 @@ cJSON* parse_mud_content (request_context* ctx, int manuf_index, int newdev)
 		 alloced_aces+=10;
 	       }
 	     } else { 		/* otherwise we clear and reuse next time */
-	       acllist[acl_index].ace[ace_index].action = 0;
-	       acllist[acl_index].ace[ace_index].matches.addrmask = NULL;
-	       acllist[acl_index].ace[ace_index].matches.dnsname = NULL;
-	       acllist[acl_index].ace[ace_index].matches.dir_initiated= 0;
+
+	       memset(&acllist[acl_index].ace[ace_index],0,sizeof(ACE));
 	       ignore_ace=0;
 	     }
 	     no_mud=0;

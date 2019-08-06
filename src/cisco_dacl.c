@@ -31,6 +31,7 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
     char *txt=NULL;
     char *dnsname=NULL;
     char *addrmask=NULL;
+    char *aceaction=NULL;
     
 
     if (acllist == NULL || acl_count <= 0) {
@@ -90,7 +91,7 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
 			      cJSON_CreateString(policy_name));
         cJSON_AddItemToObject(response_acl, "DACL", 
 			      acefmt = cJSON_CreateArray());
-	if (use_vlan)
+	if (use_vlan > 0)
 	  cJSON_AddItemToObject(response_acl, "VLAN", cJSON_CreateNumber(use_vlan));
         MUDC_LOG_INFO("Ace Count <%d>", acllist[index].ace_count);
         for (ace_index=0; ace_index < acllist[index].ace_count; ace_index++) {
@@ -100,15 +101,18 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
                 ace_ptr+= sprintf(ace_ptr, "ipv6:");
             }
 
-            if (acllist[index].ace[ace_index].action == 1) {
-		if (acllist[index].ace[ace_index].num_ace == 2) {
-                	ace_ptr+= sprintf(ace_ptr, "%s#%d=permit", acl_prefix, 
+            if (acllist[index].ace[ace_index].action == 1)
+	      aceaction=ACEPERMIT;
+	    else
+	      aceaction=ACEDENY;
+	    if (acllist[index].ace[ace_index].num_ace == 2) {
+                	ace_ptr+= sprintf(ace_ptr, aceaction, acl_prefix, 
 					  (ace_index+1)*10-1);
-		} else {
-                	ace_ptr+= sprintf(ace_ptr, "%s#%d=permit", acl_prefix, 
+	    } else {
+                	ace_ptr+= sprintf(ace_ptr, aceaction, acl_prefix, 
 					  (ace_index+1)*10);
-		}
-            }
+	    }
+
             if (acllist[index].ace[ace_index].matches.protocol == 6) {
                 ace_ptr+= sprintf(ace_ptr, " tcp");
             } else if (acllist[index].ace[ace_index].matches.protocol == 17) {
