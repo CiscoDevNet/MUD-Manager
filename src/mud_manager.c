@@ -2151,7 +2151,7 @@ static bool fetch_uri_from_macaddr(char *mac_addr, char *ret_uri)
     /*
      * Look for URI
      */
-    while (mongoc_cursor_next (cursor, &doc)) {
+    while (mongoc_cursor_next (cursor, &doc) && ( ! ret )) {
         found_str = bson_as_json(doc, NULL);
         if (found_str!=NULL) {
             MUDC_LOG_INFO("found the fields <%s>\n", found_str);
