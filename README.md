@@ -75,10 +75,9 @@ The Mongo C driver is needed for the MUD manager to communicate with MongoDB. Do
 To retrieve, make and install `1.7.0`:
 
 ```bash
-wget https://github.com/mongodb/mongo-c-driver/releases/download/1.7.0/mongo-c-driver-1.7.0.tar.gz
-tar xvfz mongo-c-driver-1.7.0
-cd mongo-c-driver-1.7.0
-./configure --disable-automatic-init-and-cleanup --with-libbson=bundled
+wget https://github.com/mongodb/mongo-c-driver
+cd mongo-c-driver
+cmake
 make
 sudo make install
 ```

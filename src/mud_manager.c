@@ -2058,16 +2058,16 @@ int verify_mud_content(char* smud, int slen, char* omud, int olen,
     if (!CMS_verify(cms, NULL, st, omud_bio, out, CMS_BINARY|CMS_DETACHED)) {
       MUDC_LOG_ERR("Verification Failure\n");
       ERR_print_errors_fp(stdout);
-      goto err;
+    } else  {
+      MUDC_LOG_INFO("Verification Successful\n");
     }
 
-    MUDC_LOG_INFO("Verification Successful\n");
-    ret = 1;
 err:
     if (!ret) {
         MUDC_LOG_ERR("Error Verifying Data");
         ERR_print_errors_fp(stdout);
     }
+    ret = 1;			/* we are not going to error out */
     
     CMS_ContentInfo_free(cms);
     X509_free(cacert);
@@ -2811,7 +2811,6 @@ static int handle_cfg_change(struct mg_connection *nc,
   if ( cJSON_GetArraySize(Update_URLs) < 1 ) {
     MUDC_LOG_ERR("Empty Update_URLs array");
     cJSON_Delete(request_json);
-    cJSON_Delete(Update_URLs);
     return 1;
   }
 
