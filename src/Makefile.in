@@ -310,7 +310,7 @@ target_alias = @target_alias@
 top_build_prefix = @top_build_prefix@
 top_builddir = @top_builddir@
 top_srcdir = @top_srcdir@
-AM_CFLAGS = -I$(top_srcdir) $(M_CPPFLAGS) -DMG_ENABLE_SSL -Wall -W $(MONGOC_CFLAGS) -Icivetweb -I$(includedir)/cjson
+AM_CFLAGS = -I$(top_srcdir) $(M_CPPFLAGS) -DMG_ENABLE_SSL -Wall -W $(MONGOC_CFLAGS) -Icivetweb -I$(includedir)/cjson -Wno-stringop-truncation
 LDADD = $(MONGOC_LIBS)
 mud_manager_SOURCES = mud_manager.c log.c sessions.c acl_types.c \
 		      cisco_dacl.c mud_fs_client.c mud_manager.h \
