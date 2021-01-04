@@ -9,6 +9,7 @@
 . ./env-root.sh
 . ./env-80211ARintermediate.sh
 
+export dir=$cadir
 
 DevID=Wt1234
 countryName=
