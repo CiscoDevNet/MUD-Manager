@@ -29,6 +29,8 @@ export cfgdir=`pwd`
 export cadir=`pwd`/8021ARintermediate
 export rootca=`pwd`/root
 export format=pem
+export interpass="env:interpass"
+export pass="env:rootpass"
 
 # cd $dir
 export crlDP=

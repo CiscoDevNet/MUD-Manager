@@ -26,7 +26,7 @@ export cadir=`pwd`/root
 export cfgdir=`pwd`
 export format=pem
 export default_crl_days=65
-
+export pass="env:rootpass"
 sn=8
 
 # edit these to suit

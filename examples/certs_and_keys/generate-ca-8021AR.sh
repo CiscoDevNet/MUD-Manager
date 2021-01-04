@@ -24,22 +24,33 @@ echo 1000 > $cadir/crlnumber
 
 # Create passworded keypair file
 
-openssl genpkey -aes256 -algorithm ec\
+openssl genpkey -pass $interpass -aes256 -algorithm ec\
    -pkeyopt ec_paramgen_curve:prime256v1 \
    -outform $format -pkeyopt ec_param_enc:named_curve\
    -out $cadir/private/8021ARintermediate.key.$format
 chmod 400 $cadir/private/8021ARintermediate.key.$format
-openssl pkey -inform $format\
-   -in $cadir/private/8021ARintermediate.key.$format -text -noout
+
+if [ $? != 0 ]; then
+    exit 1
+fi
+
+#openssl pkey -passin $interpass -inform $format\
+#   -in $cadir/private/8021ARintermediate.key.$format -text -noout
 
 # Create the CSR
 
-openssl req -config $cfgdir/openssl-root.cnf\
+openssl req -config $cfgdir/openssl-root.cnf -passin $interpass \
    -key $cadir/private/8021ARintermediate.key.$format \
    -keyform $format -outform $format -subj "$DN" -new -sha256\
    -out $cadir/csr/8021ARintermediate.csr.$format
+if [ $? != 0 ]; then
+    exit 1
+fi
 openssl req -text -noout -verify -inform $format\
    -in $cadir/csr/8021ARintermediate.csr.$format
+if [ $? != 0 ]; then
+    exit 1
+fi
 
 # Create 802.1AR Intermediate Certificate file
 # The following does NOT work for DER
@@ -52,14 +63,22 @@ export intdir=$cadir
 cadir=$rootca openssl ca -config $cfgdir/openssl-root.cnf -days 3650\
    -extensions v3_intermediate_ca -notext -md sha256\
    -in $intdir/csr/8021ARintermediate.csr.$format\
-   -out $intdir/certs/8021ARintermediate.cert.pem
-chmod 444 $cadir/certs/8021ARintermediate.cert.$format
+   -out $intdir/certs/8021ARintermediate.cert.pem -passin $pass
+if [ $? != 0 ]; then
+    exit 1
+fi
+chmod 444 $intdir/certs/8021ARintermediate.cert.$format
 
 openssl verify -CAfile $cfgdir/certs/ca.cert.$format\
-    $dir/certs/8021ARintermediate.cert.$format
+    $cadir/certs/8021ARintermediate.cert.$format
 
-openssl x509 -noout -text\
-    -in $cadir/certs/8021ARintermediate.cert.$format
+if [ $? != 0 ]; then
+    exit 1
+fi
+echo "Certificate is at $cadir/certs/8021ARintermediate.cert.$format"
+
+#openssl x509 -noout -text\
+#    -in $cadir/certs/8021ARintermediate.cert.$format
 
 # Create the certificate chain file
 
