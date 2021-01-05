@@ -61,7 +61,7 @@ openssl rand -hex $sn > $cadir/serial # hex 8 is minimum, 19 is maximum
 export intdir=$cadir
 
 cadir=$rootca openssl ca -config $cfgdir/openssl-root.cnf -days 3650\
-   -extensions v3_intermediate_ca -notext -md sha256\
+   -extensions v3_intermediate_ca -notext -md sha256 -batch \
    -in $intdir/csr/8021ARintermediate.csr.$format\
    -out $intdir/certs/8021ARintermediate.cert.pem -passin $pass
 if [ $? != 0 ]; then

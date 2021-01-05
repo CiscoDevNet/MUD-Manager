@@ -56,7 +56,7 @@ fi
 openssl rand -hex $sn > $dir/serial # hex 8 is minimum, 19 is maximum
 # Note 'openssl ca' does not support DER format
 openssl ca -config $cfgdir/openssl-8021ARintermediate.cnf -days 375\
-    -extensions 8021ar_idevid -notext -md sha256 \
+    -extensions 8021ar_idevid -notext -md sha256 -batch \
     -in $dir/csr/$DevID.csr.$format -passin $interpass \
     -out $dir/certs/$DevID.cert.$format
 
