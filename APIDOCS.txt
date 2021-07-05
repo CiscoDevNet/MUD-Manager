@@ -1,4 +1,4 @@
-Here is API provided by MUD Conttroller:
+Here is API provided by MUD Controller:
 
 All request response are in JSON format.
 
