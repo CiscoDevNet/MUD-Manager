@@ -22,39 +22,25 @@
 #            Serial Number length in bytes
 #            For a public CA the range is 8 to 19
 
-export cadir=`pwd`
-
-export cadir=${cadir-/root/ca}
-export rootca=${cadir}/root
-export cfgdir=${cfgdir-$cadir}
-export intdir=${cadir}/intermediate
-export int1ardir=${cadir}/inter_1ar
+export cadir=`pwd`/root
+export cfgdir=`pwd`
 export format=pem
 export default_crl_days=65
-
-mkdir -p $cadir/certs
-mkdir -p $rootca
-(cd $rootca
-mkdir -p certs crl csr newcerts private
-chmod 700 private
-touch index.txt index.txt.attr
-if [ ! -f serial ]; then echo 00 >serial; fi
-)
-
+export pass="env:rootpass"
 sn=8
 
 # edit these to suit
 countryName="/C=US"
 stateOrProvinceName="/ST=IN"
-localityName="/L=Indiana University"
-organizationName="/O=Cisco"
+localityName="/L=Change Me Locality"
+organizationName="/O=Change me Organization"
 organizationalUnitName="/OU=Devices"
 commonName="/CN=Root CA"
 DN=$countryName$stateOrProvinceName$localityName
 export DN=$DN$organizationName$organizationalUnitName$commonName
 
 echo $DN
-export subjectAltName=email:whatever@happens.com
+export subjectAltName=email:whatever@happens.example.com
 
 export default_crl_days=2048
 

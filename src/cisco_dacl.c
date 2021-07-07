@@ -17,6 +17,10 @@
 extern mongoc_collection_t *policies_collection;
 
 #define MAX_POLICY_NAME_LEN 100
+#define MAX_POLICY_PREFIX_LEN 20
+
+static char *ACEPERMIT="%s#%d=permit";
+static char *ACEDENY="%s#%d=deny";
 
 /*
  * Return Cisco DACL RADIUS attributes.
@@ -27,6 +31,7 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
     cJSON *response_acl=NULL, *parsed_json=NULL, *acefmt=NULL;
     char *ace_ptr=NULL, *acl_prefix=NULL;
     char policy_name[MAX_POLICY_NAME_LEN], ace_str[1024];
+    char policy_prefix[MAX_POLICY_PREFIX_LEN];
     int ace_index=0, index=0, i=0;
     char *txt=NULL;
     char *dnsname=NULL;
@@ -40,6 +45,8 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
     }
 
     memset(policy_name, 0, MAX_POLICY_NAME_LEN);
+    memset(policy_prefix,0,MAX_POLICY_PREFIX_LEN);
+
     parsed_json = cJSON_CreateArray();
     ace_ptr = ace_str;
 
@@ -63,7 +70,7 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
         MUDC_LOG_INFO("ACLName <%s> %d", acllist[index].acl_name, 
 					  acllist[index].pak_direction);
         if (acl_list_prefix != NULL) {
-            sprintf(policy_name, "%s", acl_list_prefix);
+            sprintf(policy_prefix, "%s", acl_list_prefix);
         }
 	/*
 	 * The name is currently taken directly from the MUD file, which
@@ -79,11 +86,11 @@ cJSON* create_cisco_dacl_policy(ACL *acllist, int acl_count,
 	 */
         if (acllist[index].pak_direction == INGRESS) {
             sprintf(policy_name, "%sCiscoSecure-Defined-ACL=%s.in", 
-		    policy_name, acllist[index].acl_name);
+		    policy_prefix, acllist[index].acl_name);
             acl_prefix="inacl";
         } else if (acllist[index].pak_direction == EGRESS) {
             sprintf(policy_name, "%sCiscoSecure-Defined-ACL=%s.out", 
-		    policy_name, acllist[index].acl_name);
+		    policy_prefix, acllist[index].acl_name);
             acl_prefix="outacl";
         }
 

@@ -25,16 +25,12 @@
 #            Serial Number length in bytes
 #            For a public CA the range is 8 to 19
 
-export cadir=`pwd`
-
-export dir=$cadir/8021ARintermediate
-mkdir $dir
-cd $dir
-mkdir certs crl csr newcerts private
-chmod 700 private
-touch index.txt
-sn=8 # hex 8 is minimum, 19 is maximum
-echo 1000 > $dir/crlnumber
+export cfgdir=`pwd`
+export cadir=`pwd`/8021ARintermediate
+export rootca=`pwd`/root
+export format=pem
+export interpass="env:interpass"
+export pass="env:rootpass"
 
 # cd $dir
 export crlDP=
@@ -50,12 +46,12 @@ export ocspIAI=
 
 countryName="/C=US"
 stateOrProvinceName="/ST=IN"
-localityName="/L=Indiana University"
-organizationName="/O=Cisco"
+localityName="/L=ChangeMe Intermediate Locality"
+organizationName="/O=ChangeMe Intermediate Org"
 organizationalUnitName="/OU=Devices"
 commonName="/CN=802.1AR CA"
 DN=$countryName$stateOrProvinceName$localityName$organizationName
 DN=$DN$organizationalUnitName$commonName
 echo $DN
-export subjectAltName=email:whatever@happens.com
+export subjectAltName=email:whatever@intermediate.example.com
 echo $subjectAltName

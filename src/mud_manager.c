@@ -1923,7 +1923,6 @@ static bool query_policies_by_uri(struct mg_connection *nc, const char* uri, boo
         // uri in database w/o ACLs
         // return success so that FR does not reject auth
         send_error_result(nc, 204, "{\"MSG\":\"No ACL for this MUD URL\"}");
-        MUDC_LOG_WRITE_DATA(nc, "%.*s", response_len, response_str);
     }
 
 end:

@@ -1,5 +1,5 @@
 
-AM_CFLAGS=-I$(top_srcdir) $(M_CPPFLAGS) -DMG_ENABLE_SSL -Wall -W $(MONGOC_CFLAGS) -Icivetweb -I$(includedir)/cjson
+AM_CFLAGS=-I$(top_srcdir) $(M_CPPFLAGS) -DMG_ENABLE_SSL -Wall -W $(MONGOC_CFLAGS) -Icivetweb -I$(includedir)/cjson -Wno-stringop-truncation
 LDADD= $(MONGOC_LIBS)
 
 

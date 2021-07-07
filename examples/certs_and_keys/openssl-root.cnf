@@ -13,7 +13,7 @@ default_ca = CA_default
 
 [ CA_default ]
 # Directory and file locations.
-dir               = $ENV::rootca
+dir               = $ENV::cadir
 cadir             = $ENV::cadir
 format            = $ENV::format
 
@@ -25,7 +25,7 @@ serial            = $dir/serial
 RANDFILE          = $dir/private/.rand
 
 # The root key and root certificate.
-private_key       = $dir/private/ca.key.$format
+private_key       = $cadir/private/ca.key.$format
 certificate       = $cadir/certs/ca.cert.$format
 
 # For certificate revocation lists.

@@ -9,6 +9,7 @@
 . ./env-root.sh
 . ./env-80211ARintermediate.sh
 
+export dir=$cadir
 
 DevID=Wt1234
 countryName=
@@ -33,28 +34,36 @@ if [ ! -f $dir/private/$DevID.key.$format ]; then
     openssl genpkey -algorithm ec -pkeyopt ec_paramgen_curve:prime256v1\
             -pkeyopt ec_param_enc:named_curve\
             -out $dir/private/$DevID.key.$format
+    if [ $? != 0 ]; then
+	exit 1
+    fi
     chmod 400 $dir/private/$DevID.key.$format
 fi
 
-openssl pkey -in $dir/private/$DevID.key.$format -text -noout
+#openssl pkey -in $dir/private/$DevID.key.$format -text -noout
 openssl req -config $cfgdir/openssl-8021ARintermediate.cnf\
     -key $dir/private/$DevID.key.$format \
     -subj "$DN" -new -sha256 -out $dir/csr/$DevID.csr.$format
-
-openssl req -text -noout -verify\
-    -in $dir/csr/$DevID.csr.$format
-openssl asn1parse -i -in $dir/csr/$DevID.csr.pem
+if [ $? != 0 ]; then
+    exit 1
+fi
+# openssl req -text -noout -verify\
+#    -in $dir/csr/$DevID.csr.$format
+#openssl asn1parse -i -in $dir/csr/$DevID.csr.pem
 
 openssl rand -hex $sn > $dir/serial # hex 8 is minimum, 19 is maximum
 # Note 'openssl ca' does not support DER format
 openssl ca -config $cfgdir/openssl-8021ARintermediate.cnf -days 375\
-    -extensions 8021ar_idevid -notext -md sha256 \
-    -in $dir/csr/$DevID.csr.$format\
+    -extensions 8021ar_idevid -notext -md sha256 -batch \
+    -in $dir/csr/$DevID.csr.$format -passin $interpass \
     -out $dir/certs/$DevID.cert.$format
+if [ $? != 0 ]; then
+    exit 1
+fi
 chmod 444 $dir/certs/$DevID.cert.$format
 
-openssl verify -CAfile $dir/certs/ca-chain.cert.$format\
+openssl verify -CAfile $cfgdir/certs/ca-chain.cert.$format\
      $dir/certs/$DevID.cert.$format
-openssl x509 -noout -text -in $dir/certs/$DevID.cert.$format
-openssl asn1parse -i -in $dir/certs/$DevID.cert.pem
+# openssl x509 -noout -text -in $dir/certs/$DevID.cert.$format
+# openssl asn1parse -i -in $dir/certs/$DevID.cert.pem
 
